@@ -16,6 +16,14 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+defaults:
+  run:
+    # Windows runners default to pwsh, whose native-argument re-quoting has
+    # mis-split flag values like -coverprofile=coverage.out for us before;
+    # bash (Git for Windows, present on windows-latest) behaves identically
+    # across all three OSes.
+    shell: bash
+
 env:
   GOLANGCI_LINT_VERSION: v2.13.2
   GOVULNCHECK_VERSION: v1.8.0
@@ -147,7 +155,6 @@ jobs:
           cache: false
       - run: go test -race -covermode=atomic -coverprofile=coverage.out ./...
       - name: Enforce minimum coverage
-        shell: bash
         run: |
           total=$(go tool cover -func=coverage.out | tail -1 | grep -oE '[0-9]+\.[0-9]+')
           echo "Total coverage: ${total}%"
@@ -198,7 +205,6 @@ jobs:
           GOARCH: ${{ matrix.goarch }}
         run: go build -trimpath -ldflags="-s -w" -o ${{ matrix.output }} .
       - name: Checksum
-        shell: bash
         run: shasum -a 256 ${{ matrix.output }} | tee ${{ matrix.output }}.sha256
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
