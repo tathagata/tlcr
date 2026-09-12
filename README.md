@@ -14,6 +14,8 @@ go build -o coderead .
 
 This opens a browser bound to `127.0.0.1` on an available port. You can also use `./coderead --no-browser .` and open the printed URL yourself. Close the process with Ctrl-C.
 
+Downloaded macOS/Linux Action artifacts may need `chmod +x coderead` after extraction. The first CI run includes native Linux testing and cross-compiled macOS/Windows builds; test the resulting binary on your own machine before relying on it for daily use.
+
 The structural view needs no model and works without a config file. To enable explanations, copy `config.example.json` to `config.json` **beside the binary**, set `provider` to `openai` or `anthropic`, and set `model` to a model available to your API account. Export the matching `OPENAI_API_KEY` or `ANTHROPIC_API_KEY`. You can instead pass `--config /path/to/config.json`. API access is billed by your provider; a ChatGPT or Claude subscription is not necessarily an API account.
 
 `config.json` is intentionally gitignored; do not put API keys in it. The example leaves `model` blank so you choose an available model deliberately. The UI asks for confirmation each time before sending the highlighted block. No entire-repository upload or background generation occurs. The token limits are **estimates and safeguards**, not a guaranteed billing cap; provider-reported usage is shown after each call.

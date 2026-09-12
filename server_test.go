@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -46,4 +47,16 @@ func TestExplainConsentCacheAndChange(t *testing.T) {
 	put(t, root, "main.tf", `resource "aws_s3_bucket" "one" { bucket = "new" }`)
 	if got:=post(true, "http://127.0.0.1:1234").Code; got != 200 { t.Fatalf("updated source status %d", got) }
 	if calls != 2 { t.Fatalf("changed source should invalidate cache: %d", calls) }
+}
+
+func TestAnthropicAdapter(t *testing.T) {
+	t.Setenv("ANTHROPIC_API_KEY", "test-not-a-real-key")
+	old := modelClient
+	t.Cleanup(func() { modelClient = old })
+	modelClient = &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		if r.URL.Host != "api.anthropic.com" || r.Header.Get("anthropic-version") == "" || r.Header.Get("x-api-key") == "" { t.Fatal("incorrect Anthropic request") }
+		return &http.Response{StatusCode: 200, Body: io.NopCloser(bytes.NewBufferString(`{"content":[{"type":"text","text":"Reads the source."}],"usage":{"input_tokens":30,"output_tokens":6}}`)), Header: make(http.Header)}, nil
+	})}
+	result, err := callModel(context.Background(), Config{Provider:"anthropic", Model:"test-model", MaxOutputTokens:300}, "explain source")
+	if err != nil || result.Text != "Reads the source." || result.InputTokens != 30 { t.Fatalf("result: %#v %v", result, err) }
 }
