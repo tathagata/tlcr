@@ -80,6 +80,10 @@ func Scan(root string) (*Index, error) {
 	if !info.IsDir() {
 		return nil, fmt.Errorf("not a directory: %s", root)
 	}
+	root, err = filepath.EvalSymlinks(root)
+	if err != nil {
+		return nil, err
+	}
 	idx := &Index{Root: root, Files: []FileEntry{}}
 	err = filepath.WalkDir(root, func(path string, d fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
