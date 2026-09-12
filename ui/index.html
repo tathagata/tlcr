@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CodeRead</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header>
+    <div class="brand"><span class="mark">CR</span><div><strong>CodeRead</strong><small>Understand the source</small></div></div>
+    <div class="status"><span id="provider">Structural mode</span><span id="budget"></span><button id="refresh" title="Refresh repository index">↻ Refresh</button></div>
+  </header>
+  <main>
+    <aside class="files">
+      <div class="section-head"><h2>Repository</h2><span id="count"></span></div>
+      <input id="filter" type="search" placeholder="Find a file…" aria-label="Filter files">
+      <nav id="file-list" aria-label="Repository files"></nav>
+      <div class="side-note">Read-only · local browser · no code sent until you request an explanation</div>
+    </aside>
+    <section class="source-pane">
+      <div class="pane-head"><div><h2 id="filename">Select a file</h2><small id="filekind">Code remains the source of truth</small></div></div>
+      <div id="code" class="code" aria-label="Source code"><div class="empty">Choose a file to explore its structure.</div></div>
+    </section>
+    <section class="explain-pane">
+      <div class="pane-head"><div><h2>Explanation</h2><small id="unitlabel">Select a block or function</small></div></div>
+      <div class="explain-body">
+        <div id="units" class="units"></div>
+        <div id="detail" class="detail"><p class="muted">Pick a symbol from the file, or a Terraform resource or module, to see what can be inferred without AI.</p></div>
+      </div>
+    </section>
+  </main>
+  <script src="/app.js" defer></script>
+</body>
+</html>

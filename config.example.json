@@ -1,0 +1,7 @@
+{
+  "provider": "openai",
+  "model": "",
+  "max_input_tokens": 6000,
+  "max_output_tokens": 800,
+  "session_input_budget": 24000
+}

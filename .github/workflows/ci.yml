@@ -1,0 +1,58 @@
+name: Test and build
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: false
+      - run: go mod tidy
+      - run: go test ./...
+      - run: go vet ./...
+      - run: go build -o coderead .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: coderead-linux-amd64
+          path: coderead
+      - uses: actions/upload-artifact@v4
+        with:
+          name: go-sum
+          path: go.sum
+  cross-build:
+    needs: test
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - os: darwin
+            arch: arm64
+            artifact: coderead-macos-arm64
+            output: coderead
+          - os: darwin
+            arch: amd64
+            artifact: coderead-macos-amd64
+            output: coderead
+          - os: windows
+            arch: amd64
+            artifact: coderead-windows-amd64
+            output: coderead.exe
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: false
+      - run: go mod tidy
+      - run: GOOS=${{ matrix.os }} GOARCH=${{ matrix.arch }} go build -o ${{ matrix.output }} .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: ${{ matrix.output }}

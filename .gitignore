@@ -1,0 +1,5 @@
+/coderead
+/*.exe
+/.coderead/
+/.env
+config.json
