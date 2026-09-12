@@ -4,7 +4,7 @@ An on-demand, read-only code reader: source on the left, generated explanation o
 
 ## Quick start
 
-Download the binary for your platform from a successful **Test and build** GitHub Actions run (Artifacts), or build locally with Go 1.23+:
+Download the binary for your platform from a successful **Test and build** GitHub Actions run (Artifacts), build locally with the Go version pinned in `go.mod`, or build with Docker only (no local Go install — see [Building with Docker](#building-with-docker)):
 
 ```sh
 go mod tidy
@@ -19,6 +19,48 @@ Downloaded macOS/Linux Action artifacts may need `chmod +x coderead` after extra
 The structural view needs no model and works without a config file. To enable explanations, copy `config.example.json` to `config.json` **beside the binary**, set `provider` to `openai` or `anthropic`, and set `model` to a model available to your API account. Export the matching `OPENAI_API_KEY` or `ANTHROPIC_API_KEY`. You can instead pass `--config /path/to/config.json`. API access is billed by your provider; a ChatGPT or Claude subscription is not necessarily an API account.
 
 `config.json` is intentionally gitignored; do not put API keys in it. The example leaves `model` blank so you choose an available model deliberately. The UI asks for confirmation each time before sending the highlighted block. No entire-repository upload or background generation occurs. The token limits are **estimates and safeguards**, not a guaranteed billing cap; provider-reported usage is shown after each call.
+
+## Building with Docker
+
+The `Makefile` and `Dockerfile` let you build and test this project with only Docker installed — no Go toolchain on your machine, and nothing written outside this repo.
+
+```sh
+make test    # go test ./...
+make vet     # go vet ./...
+make tidy    # go mod tidy (writes go.mod/go.sum back to the repo)
+make fmt     # gofmt -l -w on the project's own *.go files
+make build   # build ./dist/coderead for linux/amd64
+make cross   # build linux (amd64/arm64), macOS (arm64/amd64) and Windows binaries into ./dist
+make shell   # interactive shell in the build container, for anything else
+make clean   # remove ./dist and the module/build cache
+```
+
+How it stays isolated and portable:
+
+- **One version, one place.** The Go version comes from `go.mod` (the `toolchain` line if present, else `go`), read by the `Makefile` with `awk`, so every target — local `make test`, `make build`, and CI's `go-version-file: go.mod` — always uses the same toolchain. Bump it in `go.mod` (or run e.g. `make test GO_VERSION=1.28` for a one-off check) and everything picks it up. The official Go images run with `GOTOOLCHAIN=local`, so this is what actually decides the patch version used, not just a minimum.
+- **No host Go, no host pollution.** `make test`/`vet`/`tidy`/`fmt` run inside the official `golang` image via `docker run`, mounting the repo and running as your own user ID — files it writes (like `go.mod`/`go.sum` from `make tidy`) come back owned by you, not root.
+- **Caches stay inside the repo.** Module and build caches live in `.dockerbuild/` (gitignored), not in `~/go` or a Docker volume shared across other projects — `make clean` removes it entirely.
+- **Release builds need no running container.** `make build`/`make cross` use `docker buildx build --output` to compile inside a throwaway build stage and copy the resulting binaries straight into `./dist`, matching the same GOOS/GOARCH matrix as the `Test and build` GitHub Actions workflow, with `-trimpath` and stripped symbols for reproducible, smaller binaries.
+
+This covers building and testing only. Actually running `coderead` still needs a real terminal/browser on your host (it binds to `127.0.0.1` and opens a browser window), so use a locally built or downloaded binary for day-to-day use, not a container.
+
+## Continuous integration
+
+`.github/workflows/ci.yml` runs on every push, pull request, and weekly on a schedule (to catch newly-disclosed CVEs and CodeQL findings even when nothing has changed). All third-party actions are pinned by commit SHA, not a mutable tag.
+
+| Job | What it checks |
+| --- | --- |
+| `lint` | `gofmt`, `go vet`, and `golangci-lint` (config in `.golangci.yml`) |
+| `mod-tidy` | `go mod tidy -diff` and `go mod verify` — `go.mod`/`go.sum` must already be tidy |
+| `govulncheck` | known vulnerabilities reachable from this code, stdlib included |
+| `gosec` | static security analysis; results upload to the repo's Security tab as SARIF |
+| `codeql` | GitHub's semantic code analysis, uploaded the same way |
+| `dependency-review` | on pull requests only: flags newly-introduced dependencies with moderate+ severity advisories |
+| `actionlint` / `hadolint` | lint the workflow YAML itself and the `Dockerfile` |
+| `test` | `go test -race` on Linux, macOS *and* Windows (this project has OS-specific logic, e.g. `openBrowser`'s per-GOOS switch), with a coverage floor and per-OS coverage artifacts |
+| `build` | cross-compiles and checksums release binaries for linux/amd64, linux/arm64, darwin/arm64, darwin/amd64 and windows/amd64, gated on lint/mod-tidy/govulncheck/test passing first |
+
+A handful of `gosec`/`govet` findings are suppressed inline with a native `// #nosec Gxxx -- reason` comment (readable by both `golangci-lint` and the standalone `gosec` SARIF job) where the flagged code is deliberate — e.g. reading files from a repository this tool was explicitly pointed at is not an untrusted-path vulnerability.
 
 ## Current capabilities
 
