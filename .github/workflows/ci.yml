@@ -186,23 +186,23 @@ jobs:
           - goos: linux
             goarch: amd64
             artifact: coderead-linux-amd64
-            output: coderead
+            output: coderead-linux-amd64
           - goos: linux
             goarch: arm64
             artifact: coderead-linux-arm64
-            output: coderead
+            output: coderead-linux-arm64
           - goos: darwin
             goarch: arm64
             artifact: coderead-macos-arm64
-            output: coderead
+            output: coderead-macos-arm64
           - goos: darwin
             goarch: amd64
             artifact: coderead-macos-amd64
-            output: coderead
+            output: coderead-macos-amd64
           - goos: windows
             goarch: amd64
             artifact: coderead-windows-amd64
-            output: coderead.exe
+            output: coderead-windows-amd64.exe
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0

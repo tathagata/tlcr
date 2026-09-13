@@ -16,6 +16,10 @@ import (
 	"time"
 )
 
+// version is set at build time via -ldflags "-X main.version=...";
+// it stays "dev" for local builds that don't pass that flag.
+var version = "dev"
+
 type Config struct {
 	Provider           string `json:"provider"`
 	Model              string `json:"model"`
@@ -55,7 +59,12 @@ func loadConfig(path string) (Config, error) {
 func main() {
 	configPath := flag.String("config", "", "path to config JSON (default: beside binary)")
 	noBrowser := flag.Bool("no-browser", false, "print URL without opening browser")
+	showVersion := flag.Bool("version", false, "print version and exit")
 	flag.Parse()
+	if *showVersion {
+		fmt.Println("coderead " + version)
+		return
+	}
 	if flag.NArg() > 1 {
 		log.Fatal("usage: coderead [--config file] [--no-browser] [repository]")
 	}

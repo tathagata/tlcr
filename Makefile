@@ -20,6 +20,27 @@
 GO_VERSION := $(shell awk '/^toolchain go/{sub("^toolchain go","",$$0); print $$0; found=1; exit} /^go /{v=$$2} END{if (!found && v!="") print v}' go.mod)
 IMAGE      := golang:$(GO_VERSION)-bookworm
 
+# Map the host's `uname` to Go's GOOS/GOARCH so `make build` produces a
+# binary you can actually run on this machine, not always linux/amd64.
+UNAME_S := $(shell uname -s)
+UNAME_M := $(shell uname -m)
+
+ifeq ($(UNAME_S),Darwin)
+  HOST_GOOS := darwin
+else ifeq ($(UNAME_S),Linux)
+  HOST_GOOS := linux
+else
+  HOST_GOOS := $(UNAME_S)
+endif
+
+ifeq ($(UNAME_M),x86_64)
+  HOST_GOARCH := amd64
+else ifneq (,$(filter $(UNAME_M),arm64 aarch64))
+  HOST_GOARCH := arm64
+else
+  HOST_GOARCH := $(UNAME_M)
+endif
+
 # Run an arbitrary command inside the pinned Go image, as your own host
 # user (so files written back, like go.sum from `tidy`, aren't root-owned).
 # Module/build caches live under ./.dockerbuild inside the project (already
@@ -50,9 +71,12 @@ fmt:
 build:
 	docker buildx build \
 		--build-arg GO_VERSION=$(GO_VERSION) \
+		--build-arg GOOS=$(HOST_GOOS) \
+		--build-arg GOARCH=$(HOST_GOARCH) \
 		--target bin \
 		--output type=local,dest=./dist \
 		.
+	@echo "Built ./dist/coderead for $(HOST_GOOS)/$(HOST_GOARCH)"
 
 cross:
 	docker buildx build --build-arg GO_VERSION=$(GO_VERSION) --build-arg GOOS=linux --build-arg GOARCH=amd64 --build-arg OUTPUT=coderead-linux-amd64 --target bin --output type=local,dest=./dist .
