@@ -4,7 +4,7 @@ An on-demand, read-only code reader: source on the left, generated explanation o
 
 ## Quick start
 
-Download the binary for your platform from a successful **Test and build** GitHub Actions run (Artifacts), build locally with the Go version pinned in `go.mod`, or build with Docker only (no local Go install — see [Building with Docker](#building-with-docker)):
+Download the binary for your platform from the [Releases page](../../releases), build locally with the Go version pinned in `go.mod`, or build with Docker only (no local Go install — see [Building with Docker](#building-with-docker)):
 
 ```sh
 go mod tidy
@@ -14,7 +14,7 @@ go build -o coderead .
 
 This opens a browser bound to `127.0.0.1` on an available port. You can also use `./coderead --no-browser .` and open the printed URL yourself. Close the process with Ctrl-C.
 
-Downloaded macOS/Linux Action artifacts may need `chmod +x coderead` after extraction. The first CI run includes native Linux testing and cross-compiled macOS/Windows builds; test the resulting binary on your own machine before relying on it for daily use.
+Downloaded macOS/Linux binaries may need `chmod +x` after download. Run `coderead --version` to check which release you have.
 
 The structural view needs no model and works without a config file. To enable explanations, copy `config.example.json` to `config.json` **beside the binary**, set `provider` to `openai` or `anthropic`, and set `model` to a model available to your API account. Export the matching `OPENAI_API_KEY` or `ANTHROPIC_API_KEY`. You can instead pass `--config /path/to/config.json`. API access is billed by your provider; a ChatGPT or Claude subscription is not necessarily an API account.
 
@@ -29,7 +29,7 @@ make test    # go test ./...
 make vet     # go vet ./...
 make tidy    # go mod tidy (writes go.mod/go.sum back to the repo)
 make fmt     # gofmt -l -w on the project's own *.go files
-make build   # build ./dist/coderead for linux/amd64
+make build   # build ./dist/coderead for your host OS/arch (auto-detected)
 make cross   # build linux (amd64/arm64), macOS (arm64/amd64) and Windows binaries into ./dist
 make shell   # interactive shell in the build container, for anything else
 make clean   # remove ./dist and the module/build cache
@@ -60,6 +60,17 @@ This covers building and testing only. Actually running `coderead` still needs a
 A handful of `gosec`/`govet` findings are suppressed inline with a native `// #nosec Gxxx -- reason` comment where the flagged code is deliberate — e.g. reading files from a repository this tool was explicitly pointed at is not an untrusted-path vulnerability.
 
 This repo is private without GitHub Advanced Security, so CodeQL, SARIF-based security scanning, and full Dependency Review — all of which upload to the Security tab or use GHAS-gated APIs — aren't available here; they fail (e.g. "Resource not accessible by integration", or dependency-review failing in seconds) regardless of the workflow's `permissions:` block, since it's a plan limitation, not a configuration bug. Those three jobs are commented out at the bottom of `ci.yml` rather than deleted — uncomment them if this repo goes public or GHAS gets enabled. `golangci-lint`'s `gosec` linter and `govulncheck` cover the same ground in the meantime without needing GHAS.
+
+## Releasing
+
+`.github/workflows/release.yml` is manual: **Actions → Release → Run workflow** on `main`. It:
+
+1. Runs `go test`/`go vet` as a sanity gate.
+2. Computes the next version tag as `vYYYY.MM.N` — a build counter that resets each month (e.g. `v2026.09.1`, then `v2026.09.2` for a same-month re-release) — and pushes it.
+3. Cross-compiles linux/amd64, linux/arm64, darwin/arm64, darwin/amd64 and windows/amd64 with that version embedded (`coderead --version` reports it) and `-trimpath`/stripped symbols, and checksums each binary.
+4. Publishes a GitHub Release for the tag with all binaries and checksums attached, and auto-generated release notes from commits since the last release.
+
+There's no semantic versioning here — the date-based tag just marks when a build was cut, since this project doesn't track API/compatibility guarantees between releases yet.
 
 ## Current capabilities
 
