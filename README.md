@@ -46,21 +46,20 @@ This covers building and testing only. Actually running `coderead` still needs a
 
 ## Continuous integration
 
-`.github/workflows/ci.yml` runs on every push, pull request, and weekly on a schedule (to catch newly-disclosed CVEs and CodeQL findings even when nothing has changed). All third-party actions are pinned by commit SHA, not a mutable tag.
+`.github/workflows/ci.yml` runs on every push, pull request, and weekly on a schedule (to catch newly-disclosed CVEs even when nothing has changed). All third-party actions are pinned by commit SHA, not a mutable tag.
 
 | Job | What it checks |
 | --- | --- |
-| `lint` | `gofmt`, `go vet`, and `golangci-lint` (config in `.golangci.yml`) |
+| `lint` | `gofmt`, `go vet`, and `golangci-lint` (config in `.golangci.yml`), including its bundled `gosec` static-security linter |
 | `mod-tidy` | `go mod tidy -diff` and `go mod verify` — `go.mod`/`go.sum` must already be tidy |
 | `govulncheck` | known vulnerabilities reachable from this code, stdlib included |
-| `gosec` | static security analysis; results upload to the repo's Security tab as SARIF |
-| `codeql` | GitHub's semantic code analysis, uploaded the same way |
-| `dependency-review` | on pull requests only: flags newly-introduced dependencies with moderate+ severity advisories |
 | `actionlint` / `hadolint` | lint the workflow YAML itself and the `Dockerfile` |
 | `test` | `go test -race` on Linux, macOS *and* Windows (this project has OS-specific logic, e.g. `openBrowser`'s per-GOOS switch), with a coverage floor and per-OS coverage artifacts |
 | `build` | cross-compiles and checksums release binaries for linux/amd64, linux/arm64, darwin/arm64, darwin/amd64 and windows/amd64, gated on lint/mod-tidy/govulncheck/test passing first |
 
-A handful of `gosec`/`govet` findings are suppressed inline with a native `// #nosec Gxxx -- reason` comment (readable by both `golangci-lint` and the standalone `gosec` SARIF job) where the flagged code is deliberate — e.g. reading files from a repository this tool was explicitly pointed at is not an untrusted-path vulnerability.
+A handful of `gosec`/`govet` findings are suppressed inline with a native `// #nosec Gxxx -- reason` comment where the flagged code is deliberate — e.g. reading files from a repository this tool was explicitly pointed at is not an untrusted-path vulnerability.
+
+This repo is private without GitHub Advanced Security, so CodeQL, SARIF-based security scanning, and full Dependency Review — all of which upload to the Security tab or use GHAS-gated APIs — aren't available here; they fail (e.g. "Resource not accessible by integration", or dependency-review failing in seconds) regardless of the workflow's `permissions:` block, since it's a plan limitation, not a configuration bug. Those three jobs are commented out at the bottom of `ci.yml` rather than deleted — uncomment them if this repo goes public or GHAS gets enabled. `golangci-lint`'s `gosec` linter and `govulncheck` cover the same ground in the meantime without needing GHAS.
 
 ## Current capabilities
 
