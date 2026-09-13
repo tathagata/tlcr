@@ -1,0 +1,8 @@
+.git
+.github
+coderead
+*.exe
+.coderead/
+config.json
+.dockerbuild
+dist

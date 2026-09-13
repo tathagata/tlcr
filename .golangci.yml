@@ -1,0 +1,64 @@
+version: "2"
+
+run:
+  timeout: 5m
+
+linters:
+  default: none
+  enable:
+    - bodyclose
+    - contextcheck
+    - copyloopvar
+    - dupl
+    - durationcheck
+    - errcheck
+    - errorlint
+    - exhaustive
+    - gocritic
+    - gocyclo
+    - godot
+    - gosec
+    - govet
+    - ineffassign
+    - misspell
+    - nakedret
+    - nilerr
+    - noctx
+    - prealloc
+    - revive
+    - staticcheck
+    - unconvert
+    - unparam
+    - unused
+    - whitespace
+  settings:
+    gocyclo:
+      min-complexity: 15
+    dupl:
+      threshold: 100
+    govet:
+      enable-all: true
+      disable:
+        # Flags every err/etc redeclared in a nested closure or if-block,
+        # which is idiomatic Go and not a real bug; noisy enough that go
+        # vet itself excludes it from its default set.
+        - shadow
+    revive:
+      severity: warning
+      rules:
+        - name: exported
+          disabled: false
+  exclusions:
+    rules:
+      # Test files trade a bit of duplication and unchecked errors for
+      # readability; that trade is deliberate, not an oversight.
+      - path: _test\.go
+        linters:
+          - dupl
+          - errcheck
+          - gosec
+
+formatters:
+  enable:
+    - gofmt
+    - goimports

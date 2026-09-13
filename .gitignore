@@ -3,3 +3,5 @@
 /.coderead/
 /.env
 config.json
+/dist/
+/.dockerbuild/
