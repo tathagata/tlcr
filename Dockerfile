@@ -17,7 +17,7 @@ COPY . .
 
 ARG GOOS=linux
 ARG GOARCH=amd64
-ARG OUTPUT=coderead
+ARG OUTPUT=tlcr
 
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \

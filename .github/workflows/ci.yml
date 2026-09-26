@@ -30,6 +30,14 @@ env:
   ACTIONLINT_VERSION: v1.7.12
 
 jobs:
+  ui-tests:
+    name: Offline source highlighting tests
+    runs-on: ubuntu-latest
+    container: node:24-bookworm
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: node --test ui-tests/*.test.cjs
+
   actionlint:
     name: Lint workflow files
     runs-on: ubuntu-latest
@@ -185,24 +193,24 @@ jobs:
         include:
           - goos: linux
             goarch: amd64
-            artifact: coderead-linux-amd64
-            output: coderead-linux-amd64
+            artifact: tlcr-linux-amd64
+            output: tlcr
           - goos: linux
             goarch: arm64
-            artifact: coderead-linux-arm64
-            output: coderead-linux-arm64
+            artifact: tlcr-linux-arm64
+            output: tlcr
           - goos: darwin
             goarch: arm64
-            artifact: coderead-macos-arm64
-            output: coderead-macos-arm64
+            artifact: tlcr-macos-arm64
+            output: tlcr
           - goos: darwin
             goarch: amd64
-            artifact: coderead-macos-amd64
-            output: coderead-macos-amd64
+            artifact: tlcr-macos-amd64
+            output: tlcr
           - goos: windows
             goarch: amd64
-            artifact: coderead-windows-amd64
-            output: coderead-windows-amd64.exe
+            artifact: tlcr-windows-amd64
+            output: tlcr.exe
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0

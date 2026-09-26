@@ -1,4 +1,4 @@
-package main
+package model
 
 import (
 	"bytes"
@@ -11,19 +11,17 @@ import (
 	"os"
 	"strings"
 	"time"
+
+	"github.com/tathagata/coderead/internal/core"
 )
 
-type Explanation struct {
-	Text         string `json:"text"`
-	InputTokens  int    `json:"input_tokens"`
-	OutputTokens int    `json:"output_tokens"`
-	Cached       bool   `json:"cached"`
-}
+// Client is the injectable HTTP transport used only for explicitly requested model calls.
+var Client = &http.Client{Timeout: 45 * time.Second}
 
-var modelClient = &http.Client{Timeout: 45 * time.Second}
-
+// Call invokes the explicitly configured model provider. It is never called by structural analysis.
+//
 //nolint:gocyclo // one linear request/response flow per provider; splitting it up would scatter the flow across files
-func callModel(ctx context.Context, cfg Config, prompt string) (Explanation, error) {
+func Call(ctx context.Context, cfg core.Config, prompt string) (core.Explanation, error) {
 	var endpoint, apiKey string
 	var body any
 	switch cfg.Provider {
@@ -34,21 +32,21 @@ func callModel(ctx context.Context, cfg Config, prompt string) (Explanation, err
 		endpoint, apiKey = "https://api.anthropic.com/v1/messages", os.Getenv("ANTHROPIC_API_KEY") // #nosec G101 -- endpoint URL and env var name, not a credential
 		body = map[string]any{"model": cfg.Model, "messages": []map[string]string{{"role": "user", "content": prompt}}, "max_tokens": cfg.MaxOutputTokens}
 	default:
-		return Explanation{}, errors.New("configure provider (openai or anthropic) before explaining")
+		return core.Explanation{}, errors.New("configure provider (openai or anthropic) before explaining")
 	}
 	if cfg.Model == "" {
-		return Explanation{}, errors.New("set model in config.json before explaining")
+		return core.Explanation{}, errors.New("set model in config.json before explaining")
 	}
 	if apiKey == "" {
-		return Explanation{}, fmt.Errorf("%s_API_KEY environment variable is missing", map[string]string{"openai": "OPENAI", "anthropic": "ANTHROPIC"}[cfg.Provider])
+		return core.Explanation{}, fmt.Errorf("%s_API_KEY environment variable is missing", map[string]string{"openai": "OPENAI", "anthropic": "ANTHROPIC"}[cfg.Provider])
 	}
 	encoded, err := json.Marshal(body)
 	if err != nil {
-		return Explanation{}, err
+		return core.Explanation{}, err
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(encoded))
 	if err != nil {
-		return Explanation{}, err
+		return core.Explanation{}, err
 	}
 	req.Header.Set("Content-Type", "application/json")
 	if cfg.Provider == "openai" {
@@ -57,17 +55,17 @@ func callModel(ctx context.Context, cfg Config, prompt string) (Explanation, err
 		req.Header.Set("x-api-key", apiKey)
 		req.Header.Set("anthropic-version", "2023-06-01")
 	}
-	resp, err := modelClient.Do(req)
+	resp, err := Client.Do(req)
 	if err != nil {
-		return Explanation{}, err
+		return core.Explanation{}, err
 	}
 	defer func() { _ = resp.Body.Close() }()
 	data, err := io.ReadAll(io.LimitReader(resp.Body, 2*1024*1024))
 	if err != nil {
-		return Explanation{}, err
+		return core.Explanation{}, err
 	}
 	if resp.StatusCode != http.StatusOK {
-		return Explanation{}, fmt.Errorf("%s returned HTTP %d: %s", cfg.Provider, resp.StatusCode, safeProviderError(data))
+		return core.Explanation{}, fmt.Errorf("%s returned HTTP %d: %s", cfg.Provider, resp.StatusCode, safeProviderError(data))
 	}
 	if cfg.Provider == "openai" {
 		var parsed struct {
@@ -83,7 +81,7 @@ func callModel(ctx context.Context, cfg Config, prompt string) (Explanation, err
 			} `json:"usage"`
 		}
 		if err := json.Unmarshal(data, &parsed); err != nil {
-			return Explanation{}, err
+			return core.Explanation{}, err
 		}
 		var chunks []string
 		for _, o := range parsed.Output {
@@ -94,9 +92,9 @@ func callModel(ctx context.Context, cfg Config, prompt string) (Explanation, err
 			}
 		}
 		if len(chunks) == 0 {
-			return Explanation{}, errors.New("model returned no explanation text; try a different model or increase max_output_tokens")
+			return core.Explanation{}, errors.New("model returned no explanation text; try a different model or increase max_output_tokens")
 		}
-		return Explanation{Text: strings.Join(chunks, "\n"), InputTokens: parsed.Usage.Input, OutputTokens: parsed.Usage.Output}, nil
+		return core.Explanation{Text: strings.Join(chunks, "\n"), InputTokens: parsed.Usage.Input, OutputTokens: parsed.Usage.Output}, nil
 	}
 	var parsed struct {
 		Content []struct {
@@ -109,7 +107,7 @@ func callModel(ctx context.Context, cfg Config, prompt string) (Explanation, err
 		} `json:"usage"`
 	}
 	if err := json.Unmarshal(data, &parsed); err != nil {
-		return Explanation{}, err
+		return core.Explanation{}, err
 	}
 	var chunks []string
 	for _, c := range parsed.Content {
@@ -118,9 +116,9 @@ func callModel(ctx context.Context, cfg Config, prompt string) (Explanation, err
 		}
 	}
 	if len(chunks) == 0 {
-		return Explanation{}, errors.New("model returned no explanation text")
+		return core.Explanation{}, errors.New("model returned no explanation text")
 	}
-	return Explanation{Text: strings.Join(chunks, "\n"), InputTokens: parsed.Usage.Input, OutputTokens: parsed.Usage.Output}, nil
+	return core.Explanation{Text: strings.Join(chunks, "\n"), InputTokens: parsed.Usage.Input, OutputTokens: parsed.Usage.Output}, nil
 }
 
 func safeProviderError(data []byte) string {

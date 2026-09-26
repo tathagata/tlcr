@@ -4,7 +4,7 @@
 #   make vet       run `go vet ./...`
 #   make tidy      run `go mod tidy` (writes go.mod/go.sum back to the host)
 #   make fmt       run `gofmt -l -w .`
-#   make build     build ./dist/coderead for your host OS/arch
+#   make build     build ./dist/tlcr for your host OS/arch
 #   make cross     build linux (amd64/arm64), macOS (arm64/amd64) and Windows binaries into ./dist
 #   make shell     drop into a shell in the build container
 #   make clean     remove ./dist and the build/module caches
@@ -66,7 +66,7 @@ tidy:
 	$(DOCKER_RUN) go mod tidy
 
 fmt:
-	$(DOCKER_RUN) gofmt -l -w -- *.go
+	$(DOCKER_RUN) gofmt -l -w .
 
 build:
 	docker buildx build \
@@ -76,14 +76,14 @@ build:
 		--target bin \
 		--output type=local,dest=./dist \
 		.
-	@echo "Built ./dist/coderead for $(HOST_GOOS)/$(HOST_GOARCH)"
+	@echo "Built ./dist/tlcr for $(HOST_GOOS)/$(HOST_GOARCH)"
 
 cross:
-	docker buildx build --build-arg GO_VERSION=$(GO_VERSION) --build-arg GOOS=linux --build-arg GOARCH=amd64 --build-arg OUTPUT=coderead-linux-amd64 --target bin --output type=local,dest=./dist .
-	docker buildx build --build-arg GO_VERSION=$(GO_VERSION) --build-arg GOOS=linux --build-arg GOARCH=arm64 --build-arg OUTPUT=coderead-linux-arm64 --target bin --output type=local,dest=./dist .
-	docker buildx build --build-arg GO_VERSION=$(GO_VERSION) --build-arg GOOS=darwin --build-arg GOARCH=arm64 --build-arg OUTPUT=coderead-macos-arm64 --target bin --output type=local,dest=./dist .
-	docker buildx build --build-arg GO_VERSION=$(GO_VERSION) --build-arg GOOS=darwin --build-arg GOARCH=amd64 --build-arg OUTPUT=coderead-macos-amd64 --target bin --output type=local,dest=./dist .
-	docker buildx build --build-arg GO_VERSION=$(GO_VERSION) --build-arg GOOS=windows --build-arg GOARCH=amd64 --build-arg OUTPUT=coderead-windows-amd64.exe --target bin --output type=local,dest=./dist .
+	docker buildx build --build-arg GO_VERSION=$(GO_VERSION) --build-arg GOOS=linux --build-arg GOARCH=amd64 --build-arg OUTPUT=tlcr --target bin --output type=local,dest=./dist/tlcr-linux-amd64 .
+	docker buildx build --build-arg GO_VERSION=$(GO_VERSION) --build-arg GOOS=linux --build-arg GOARCH=arm64 --build-arg OUTPUT=tlcr --target bin --output type=local,dest=./dist/tlcr-linux-arm64 .
+	docker buildx build --build-arg GO_VERSION=$(GO_VERSION) --build-arg GOOS=darwin --build-arg GOARCH=arm64 --build-arg OUTPUT=tlcr --target bin --output type=local,dest=./dist/tlcr-macos-arm64 .
+	docker buildx build --build-arg GO_VERSION=$(GO_VERSION) --build-arg GOOS=darwin --build-arg GOARCH=amd64 --build-arg OUTPUT=tlcr --target bin --output type=local,dest=./dist/tlcr-macos-amd64 .
+	docker buildx build --build-arg GO_VERSION=$(GO_VERSION) --build-arg GOOS=windows --build-arg GOARCH=amd64 --build-arg OUTPUT=tlcr.exe --target bin --output type=local,dest=./dist/tlcr-windows-amd64 .
 
 shell:
 	$(DOCKER_RUN) bash
@@ -92,3 +92,8 @@ clean:
 	rm -rf dist
 	chmod -R u+w .dockerbuild 2>/dev/null || true
 	rm -rf .dockerbuild
+
+# Pure-JS source-preservation tests need no npm install or network.
+.PHONY: test-ui
+test-ui:
+	docker run --rm --network none -v "$(CURDIR)":/src:ro -w /src node:24-bookworm node --test ui-tests/*.test.cjs

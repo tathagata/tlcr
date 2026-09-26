@@ -1,7 +1,11 @@
-/coderead
+/tlcr
 /*.exe
-/.coderead/
+/.tlcr/
 /.env
 config.json
 /dist/
 /.dockerbuild/
+
+# Legacy executable and local state remain excluded.
+/coderead
+/.coderead/

@@ -14,19 +14,15 @@ import (
 	"runtime"
 	"strings"
 	"time"
+
+	"github.com/tathagata/coderead/internal/core"
 )
 
 // version is set at build time via -ldflags "-X main.version=...";
 // it stays "dev" for local builds that don't pass that flag.
 var version = "dev"
 
-type Config struct {
-	Provider           string `json:"provider"`
-	Model              string `json:"model"`
-	MaxInputTokens     int    `json:"max_input_tokens"`
-	MaxOutputTokens    int    `json:"max_output_tokens"`
-	SessionInputBudget int    `json:"session_input_budget"`
-}
+type Config = core.Config
 
 func loadConfig(path string) (Config, error) {
 	c := Config{MaxInputTokens: 6000, MaxOutputTokens: 800, SessionInputBudget: 24000}
@@ -57,16 +53,23 @@ func loadConfig(path string) (Config, error) {
 }
 
 func main() {
+	if runLocalCommand() {
+		return
+	}
+	flag.Usage = func() {
+		_, _ = fmt.Fprintln(flag.CommandLine.Output(), "Usage: tlcr [options] [repository] | tlcr tour [--kind architecture] [repository] | tlcr review [--base HEAD] [repository]")
+		flag.PrintDefaults()
+	}
 	configPath := flag.String("config", "", "path to config JSON (default: beside binary)")
 	noBrowser := flag.Bool("no-browser", false, "print URL without opening browser")
 	showVersion := flag.Bool("version", false, "print version and exit")
 	flag.Parse()
 	if *showVersion {
-		fmt.Println("coderead " + version)
+		fmt.Println("tlcr " + version)
 		return
 	}
 	if flag.NArg() > 1 {
-		log.Fatal("usage: coderead [--config file] [--no-browser] [repository]")
+		log.Fatal("usage: tlcr [--config file] [--no-browser] [repository]")
 	}
 	root := "."
 	if flag.NArg() == 1 {
@@ -84,7 +87,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	idx, err := Scan(root)
+	idx, err := core.Scan(root)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -94,7 +97,7 @@ func main() {
 		log.Fatal(err)
 	}
 	url := "http://" + listener.Addr().String()
-	fmt.Printf("CodeRead: %s\nReading: %s\n", url, root)
+	fmt.Printf("tlcr: %s\nReading: %s\n", url, root)
 	if !*noBrowser {
 		go func() { time.Sleep(250 * time.Millisecond); openBrowser(url) }()
 	}
@@ -116,4 +119,23 @@ func openBrowser(url string) {
 	if err := exec.CommandContext(context.Background(), command, args...).Start(); err != nil && !strings.Contains(err.Error(), "executable file not found") { // #nosec G204 -- command/args come from a fixed runtime.GOOS switch and our own loopback URL, not external input
 		log.Printf("browser: %v", err)
 	}
+}
+
+func runLocalCommand() bool {
+	if len(os.Args) < 2 {
+		return false
+	}
+	var err error
+	switch os.Args[1] {
+	case "tour":
+		err = runTour(context.Background(), os.Args[2:], os.Stdout)
+	case "review":
+		err = runReview(context.Background(), os.Args[2:], os.Stdout)
+	default:
+		return false
+	}
+	if err != nil {
+		log.Fatal(err)
+	}
+	return true
 }
