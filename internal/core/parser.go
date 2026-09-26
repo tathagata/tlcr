@@ -81,6 +81,8 @@ func DefaultRegistry() *Registry {
 	registry, _ := NewRegistry(
 		ParserRegistration{Parser: sourceParser{kind: "terraform", extensions: "|.tf|", parse: terraformUnits}, Priority: 100},
 		ParserRegistration{Parser: sourceParser{kind: "go", extensions: "|.go|", parse: goUnits}, Priority: 90},
+		ParserRegistration{Parser: sourceParser{kind: "python", extensions: "|.py|", parse: pythonUnits}, Priority: 85},
+		ParserRegistration{Parser: shellParser{}, Priority: 84},
 		ParserRegistration{Parser: sourceParser{kind: "frontend", extensions: "|.js|.jsx|.ts|.tsx|.html|.css|", parse: nil}, Priority: 80},
 		ParserRegistration{Parser: sourceParser{kind: "document", extensions: "|.md|.mdx|.txt|", parse: nil}, Priority: 10},
 	)
