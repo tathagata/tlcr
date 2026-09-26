@@ -1,0 +1,11 @@
+# Comprehension core
+
+`internal/core` owns repository scanning, parser registration, normalized graph facts, local evidence, ranking, Tours, local change comparison and optional explanation preparation. It has no HTTP dependency. The root HTTP handlers and `tour`/`review` commands adapt the same services to browser and terminal surfaces. `internal/model` is the explicit network adapter.
+
+A Repository holds an index and matching graph snapshot. Refresh scans and builds a replacement before atomically publishing it. Ordinary navigation queries do not rescan. Current-source reads use the registered parser; graph orientation verifies source identity. Exclusion and module-identity changes make stale snapshots unavailable until refresh. Typed core errors retain their category through HTTP adapters.
+
+Each graph node and edge carries source provenance. Go AST/type information resolves only indexed local packages; no compiler/build commands or module fetching are invoked. Missing targets and dynamic interface dispatch are omitted. HCL literal local module sources link indexed units. Ranking explains its heuristic factors separately from facts. Evidence providers may fail independently; missing Git does not disable source navigation.
+
+The browser binds semantic navigation actions to keys, maintains bounded in-memory reading history, and uses sequence checks for late responses. Local worker tokenization produces token data only; DOM text-node rendering preserves the source. Change Tour has explicit base and indexed-working-tree panes and can retain removed source without pretending it exists in the current file browser.
+
+Explanation preparation is local and bounded. The surface displays the exact prompt and model destination, then confirms that the approved digest matches a newly prepared payload. Budget reservations are synchronized, failed requests roll back, and explanation cache writes replace private temporary files atomically. AI text is never promoted into the source graph.

@@ -60,24 +60,24 @@ jobs:
         include:
           - goos: linux
             goarch: amd64
-            artifact: coderead-linux-amd64
-            output: coderead-linux-amd64
+            artifact: tlcr-linux-amd64
+            output: tlcr
           - goos: linux
             goarch: arm64
-            artifact: coderead-linux-arm64
-            output: coderead-linux-arm64
+            artifact: tlcr-linux-arm64
+            output: tlcr
           - goos: darwin
             goarch: arm64
-            artifact: coderead-macos-arm64
-            output: coderead-macos-arm64
+            artifact: tlcr-macos-arm64
+            output: tlcr
           - goos: darwin
             goarch: amd64
-            artifact: coderead-macos-amd64
-            output: coderead-macos-amd64
+            artifact: tlcr-macos-amd64
+            output: tlcr
           - goos: windows
             goarch: amd64
-            artifact: coderead-windows-amd64
-            output: coderead-windows-amd64.exe
+            artifact: tlcr-windows-amd64
+            output: tlcr.exe
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -93,12 +93,25 @@ jobs:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
         run: go build -trimpath -ldflags="-s -w -X main.version=${{ needs.version.outputs.tag }}" -o dist/${{ matrix.artifact }}/${{ matrix.output }} .
-      - name: Checksum
-        run: cd dist/${{ matrix.artifact }} && shasum -a 256 ${{ matrix.output }} | tee ${{ matrix.output }}.sha256
+      - name: Package canonical executable
+        env:
+          ARTIFACT: ${{ matrix.artifact }}
+          OUTPUT: ${{ matrix.output }}
+          TARGET_OS: ${{ matrix.goos }}
+        run: |
+          mkdir -p release
+          if [ "$TARGET_OS" = windows ]; then
+            archive="$ARTIFACT.zip"
+            (cd "dist/$ARTIFACT" && zip "../../release/$archive" "$OUTPUT")
+          else
+            archive="$ARTIFACT.tar.gz"
+            tar -czf "release/$archive" -C "dist/$ARTIFACT" "$OUTPUT"
+          fi
+          (cd release && shasum -a 256 "$archive" > "$ARTIFACT.sha256")
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: ${{ matrix.artifact }}
-          path: dist/${{ matrix.artifact }}
+          path: release/*
 
   publish:
     name: Publish GitHub Release

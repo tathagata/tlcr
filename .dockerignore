@@ -1,8 +1,12 @@
 .git
 .github
-coderead
+tlcr
 *.exe
-.coderead/
+.tlcr/
 config.json
 .dockerbuild
 dist
+
+# Legacy executable and local state remain excluded.
+coderead
+.coderead/
