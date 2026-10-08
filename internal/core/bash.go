@@ -6,11 +6,15 @@ import (
 	"strings"
 )
 
-// bashFuncRe matches a function definition whose opening brace is alone at
-// the end of the line: `name() {`, `function name {`, or `function name() {`.
-// A bare `name {` with neither the `function` keyword nor `()` is not valid
-// bash function syntax and must not match.
-var bashFuncRe = regexp.MustCompile(`^\s*(function\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*(\(\s*\))?\s*\{\s*$`)
+// bashFuncRe matches the start of a function definition: `name() {`,
+// `function name {`, or `function name() {`, with any one-line body after
+// the brace. A bare `name {` with neither the `function` keyword nor `()` is
+// not valid bash function syntax and is rejected by the caller.
+var bashFuncRe = regexp.MustCompile(`^\s*(function\s+)?([A-Za-z_][A-Za-z0-9_:.-]*)\s*(\(\s*\))?\s*\{(.*)$`)
+
+// bashHeredocRe matches a heredoc redirection (`<<EOF`, `<<-EOF`, `<<'EOF'`,
+// `<< "EOF"`) but not a `<<<` here-string.
+var bashHeredocRe = regexp.MustCompile(`(?:^|[^<])<<(-?)\s*(?:'([^']+)'|"([^"]+)"|\\?([A-Za-z_][A-Za-z0-9_]*))`)
 
 // shellParser recognizes shell scripts by extension or, for extension-less
 // executables, by shebang.
@@ -54,35 +58,72 @@ func isShellShebang(peek []byte) bool {
 // brace-depth scan for the matching close — not a shell parser. Quotes,
 // backslash escapes and `#` comments are tracked per line so that `if`/`for`/
 // `case` bodies and embedded strings inside a function never look like its
-// closing brace; heredoc bodies are not specially handled and could throw
-// off brace counting if they contain unbalanced braces.
+// closing brace, and heredoc bodies are skipped entirely. A definition whose
+// opening brace is on the following line is not recognized.
 func bashUnits(path string, data []byte) []Unit {
 	lines := strings.Split(string(data), "\n")
+	heredoc := bashHeredocLines(lines)
 	units := []Unit{}
 
 	for i := 0; i < len(lines); i++ {
+		if heredoc[i] {
+			continue
+		}
 		m := bashFuncRe.FindStringSubmatch(lines[i])
 		if m == nil || (m[1] == "" && m[3] == "") {
 			continue
 		}
 		name := "function " + m[2]
-		start := i + 1
-		depth := 1
+		depth := 1 + bashBraceDelta(m[4])
 		end := len(lines)
-		for j := i + 1; j < len(lines); j++ {
+		if depth <= 0 {
+			end = i + 1
+		}
+		for j := i + 1; depth > 0 && j < len(lines); j++ {
+			if heredoc[j] {
+				continue
+			}
 			depth += bashBraceDelta(lines[j])
 			if depth <= 0 {
 				end = j + 1
-				break
 			}
 		}
-		units = append(units, Unit{ID: path + ":" + name, Kind: "function", Name: name, Start: start, End: end})
+		units = append(units, Unit{ID: path + ":" + name, Kind: "function", Name: name, Start: i + 1, End: end})
 	}
 	return uniqueUnits(units)
 }
 
+// bashHeredocLines marks heredoc bodies and their terminators. A `<<` with
+// no matching terminator line (an arithmetic shift, say) marks nothing.
+func bashHeredocLines(lines []string) []bool {
+	body := make([]bool, len(lines))
+	for i := 0; i < len(lines); i++ {
+		m := bashHeredocRe.FindStringSubmatch(lines[i])
+		if m == nil {
+			continue
+		}
+		delim := m[2] + m[3] + m[4]
+		for j := i + 1; j < len(lines); j++ {
+			candidate := strings.TrimRight(lines[j], "\r")
+			if m[1] == "-" {
+				candidate = strings.TrimLeft(candidate, "\t")
+			}
+			if candidate == delim {
+				for k := i + 1; k <= j; k++ {
+					body[k] = true
+				}
+				i = j
+				break
+			}
+		}
+	}
+	return body
+}
+
 // bashBraceDelta returns a line's net effect on brace depth, ignoring braces
-// inside quotes or after an unquoted '#' comment marker.
+// inside quotes or after an unquoted '#' comment marker. A '#' only starts a
+// comment at the beginning of a word, so `${#items[@]}` and `${name#prefix}`
+// stay balanced.
 func bashBraceDelta(line string) int {
 	delta := 0
 	var quote byte
@@ -102,7 +143,9 @@ func bashBraceDelta(line string) int {
 		case '\'', '"':
 			quote = c
 		case '#':
-			return delta
+			if i == 0 || line[i-1] == ' ' || line[i-1] == '\t' {
+				return delta
+			}
 		case '{':
 			delta++
 		case '}':

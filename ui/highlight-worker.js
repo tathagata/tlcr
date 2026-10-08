@@ -1,6 +1,6 @@
 'use strict';
 self.Prism = {manual: true, disableWorkerMessageHandler: true};
-importScripts('/prism-core.js', '/prism-clike.js', '/prism-go.js', '/prism-hcl.js', '/prism-markup.js', '/prism-css.js', '/prism-javascript.js', '/prism-typescript.js', '/prism-jsx.js', '/prism-tsx.js');
+importScripts('/prism-core.js', '/prism-clike.js', '/prism-go.js', '/prism-hcl.js', '/prism-markup.js', '/prism-css.js', '/prism-javascript.js', '/prism-typescript.js', '/prism-jsx.js', '/prism-tsx.js', '/prism-python.js', '/prism-bash.js', '/prism-yaml.js');
 self.onmessage = ({data}) => {
   try {
     const {source, language} = data;

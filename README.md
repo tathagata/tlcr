@@ -1,6 +1,6 @@
 # tlcr
 
-A local, read-only code reader with source-backed orientation, relationships, evidence and guided Tours. The CLI and browser UI ship in one Go binary and work without AI or an account. Terraform/HCL and Go are parsed structurally; frontend assets and documents are readable as files. Optional AI enrichment uses an exact-payload preview and explicit approval.
+A local, read-only code reader with source-backed orientation, relationships, evidence and guided Tours. The CLI and browser UI ship in one Go binary and work without AI or an account. Terraform/HCL, Go, Python, shell scripts and Ansible playbooks/task lists are parsed structurally; frontend assets, other YAML and documents are readable as files. Optional AI enrichment uses an exact-payload preview and explicit approval.
 
 ## Quick start
 
@@ -84,7 +84,7 @@ There's no semantic versioning here — the date-based tag just marks when a bui
 
 This is a source reader, not a Terraform plan, IAM policy evaluator, complete call graph or security scanner. It does not run Terraform, edit the target repository, or evaluate variables. For unsupported languages, structural navigation is at file level. `.gitignore` matching covers the common syntax (negation, anchoring, directory-only patterns, `**`) via a small dependency-free matcher, not a byte-for-byte reimplementation of git's own wildmatch — very unusual patterns may match slightly differently than `git check-ignore` would. As in git itself, a pattern inside an already-ignored directory's own `.gitignore` cannot re-include files there (`vendor/` at the root always wins, however `vendor/keep/.gitignore` is written). Files a `.gitignore` doesn't cover can still contain secrets: review highlighted code before approving any send.
 
-The binary uses standard Go networking to call the configured provider directly over HTTPS. It does not bundle model weights. The sidecar config is JSON to avoid an additional YAML dependency. Local browser assets are embedded at build time.
+The binary uses standard Go networking to call the configured provider directly over HTTPS. It does not bundle model weights. The sidecar config is JSON. Local browser assets are embedded at build time.
 
 ## Dogfood checks
 
@@ -119,9 +119,9 @@ tlcr review --base main --json ./repository
 
 `review` compares a local commit with the indexed working-tree snapshot, including staged and untracked permitted source. It makes no GitHub, model, or network requests. Change Tour is also available in the browser, with a local base selector and base/working-tree source panes. JSON includes before/after source, added/removed relationships, related callers/tests, and an ordered tour. Removed units retain their base source. Renamed symbols are conservatively reported as added/removed, and text outside parsed units gets a file-context stop. Standard Go generated files can be collapsed when both versions contain the generated-code marker. GitHub review comments are not integrated yet.
 
-Go and Terraform have structural units and local relationships. Frontend and document files currently have whole-file fallback units. The Go graph resolves indexed local packages without running builds or downloading modules; external calls, dynamic interface dispatch and unresolved references are omitted. Role ranking and Tour ordering are explicitly heuristic, not proof of runtime behavior or correctness.
+Go and Terraform have structural units and local relationships. Python has one unit per top-level `def`/`async def`/`class` (decorators included, methods not split out), found by indentation rather than a full parse. Shell scripts (`.sh`, `.bash`, or an extension-less file with an `sh`/`bash` shebang) have one unit per function; a definition whose opening brace is on the next line is not recognized. Ansible playbooks have one unit per play and task lists one per task, classified from the YAML structure rather than the path, with nothing templated or executed. Other YAML (including Kubernetes manifests), frontend and document files currently have whole-file fallback units, as does any file whose structure cannot be read. The Go graph resolves indexed local packages without running builds or downloading modules; external calls, dynamic interface dispatch and unresolved references are omitted. Role ranking and Tour ordering are explicitly heuristic, not proof of runtime behavior or correctness.
 
-Source highlighting is fully embedded and works offline for Go, HCL, JS/TS, JSX/TSX, HTML and CSS. Unsupported kinds remain plain text. Tokenization runs in a local worker with a timeout, preserves multiline tokens, and never inserts source as HTML. Files longer than 2,000 lines have explicit earlier/later navigation. See [vendored dependency details](docs/THIRD_PARTY.md).
+Source highlighting is fully embedded and works offline for Go, HCL, Python, shell, YAML, JS/TS, JSX/TSX, HTML and CSS. Unsupported kinds remain plain text. Tokenization runs in a local worker with a timeout, preserves multiline tokens, and never inserts source as HTML. Files longer than 2,000 lines have explicit earlier/later navigation. See [vendored dependency details](docs/THIRD_PARTY.md).
 
 ### Explicit AI enrichment
 
@@ -129,6 +129,6 @@ The optional AI action first shows the exact prompt, provider/model and estimate
 
 ### Analysis limits
 
-Indexing is bounded to 4,096 recognized files / 32 MiB, 256 KiB per file, 50,000 visited entries and 64 directory levels. Symlinks, nonregular files, ignored paths, known private state and encrypted Ansible Vault content are omitted. Changes to exclusion rules or module identity invalidate the snapshot. A local change review allows 128 historical blob reads, 4 MiB of returned changed source, 2,000 change entries and a 15-second Git-operation deadline. Large comparisons fail clearly and can be narrowed by choosing a smaller root or closer base. Tours show at most 32 change stops; all detected changes remain in the review result.
+Indexing is bounded to 4,096 recognized files / 32 MiB, 256 KiB per file, 50,000 visited entries and 64 directory levels. Symlinks, nonregular files, ignored paths, known private state and Ansible Vault ciphertext (wholly encrypted files, and YAML files with inline `!vault` values) are omitted. Changes to exclusion rules or module identity invalidate the snapshot. A local change review allows 128 historical blob reads, 4 MiB of returned changed source, 2,000 change entries and a 15-second Git-operation deadline. Large comparisons fail clearly and can be narrowed by choosing a smaller root or closer base. Tours show at most 32 change stops; all detected changes remain in the review result.
 
 Go regression tests run with `make test`; pure-JavaScript highlighting tests run with `make test-ui` (Docker; no npm installation needed). Runtime exploration remains read-only toward the target repository. Explanation cache writes use private temporary files and atomic replacement.

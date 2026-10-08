@@ -127,7 +127,7 @@ func baseSnapshot(ctx context.Context, idx *Index, oid string) (*Index, error) {
 			module = moduleDeclaration(source)
 			continue
 		}
-		if strings.HasPrefix(strings.TrimSpace(source), "$ANSIBLE_VAULT;") {
+		if vaultEncrypted(blob.path, source) {
 			continue
 		}
 		entry, ok := idx.registry.Parse(blob.path, []byte(source))

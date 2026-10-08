@@ -2,7 +2,7 @@
 // Only explicit indexed kinds select grammars. No content detection or remote assets.
 window.tlcrHighlight = (() => {
   let worker = null, pending = null;
-  const language = (kind, path) => kind === 'go' ? 'go' : kind === 'terraform' ? 'hcl' : kind === 'frontend' ? ({js:'javascript',jsx:'jsx',ts:'typescript',tsx:'tsx',html:'markup',css:'css'}[path.split('.').pop().toLowerCase()] || '') : '';
+  const language = (kind, path) => kind === 'go' ? 'go' : kind === 'terraform' ? 'hcl' : kind === 'python' ? 'python' : kind === 'shell' ? 'bash' : kind === 'ansible' || kind === 'yaml' ? 'yaml' : kind === 'frontend' ? ({js:'javascript',jsx:'jsx',ts:'typescript',tsx:'tsx',html:'markup',css:'css'}[path.split('.').pop().toLowerCase()] || '') : '';
   function cancel() { if (pending) pending(null); }
   function tokenize(source, kind, path) {
     cancel(); const grammar = language(kind, path);

@@ -4,9 +4,9 @@ PrismJS 1.30.0 (MIT), downloaded from the npm registry and verified against the 
 
 Only the core and explicit grammars are embedded; no CDN, autoloader, DOM-highlighting plugin or runtime package fetch is used. A dedicated local worker tokenizes entire files to retain multiline state. Our renderer uses text nodes, never HTML from the tokenizer. Unsupported languages remain plain text; worker timeout falls back to plain text.
 
-Prism was selected for its separate grammars, token-stream API and MIT license. Go, HCL, JS/TS, JSX/TSX, HTML and CSS are included.
+Prism was selected for its separate grammars, token-stream API and MIT license. Go, HCL, Python, Bash, YAML, JS/TS, JSX/TSX, HTML and CSS are included.
 
-Total JavaScript: 23211 bytes, uncompressed on disk. License: `ui/PRISM-LICENSE.txt`.
+Total JavaScript: 33437 bytes, uncompressed on disk. License: `ui/PRISM-LICENSE.txt`.
 
 | File | Bytes | SHA-256 |
 |---|---:|---|
@@ -20,3 +20,10 @@ Total JavaScript: 23211 bytes, uncompressed on disk. License: `ui/PRISM-LICENSE.
 | prism-typescript.js | 1294 | 852f5513bb9ca9db247f86ecfce74acc91c541749d34929157240518fef8152a |
 | prism-jsx.js | 2388 | 0c8b80e4d98f6813ef95fd0e7ae2862cc0804ec305e0ad1f99c0a4bb7c28f865 |
 | prism-tsx.js | 305 | 752c15ed4ff1d03e042b407b332892e1097d5f5e348861e2e26db20d71b349bf |
+| prism-python.js | 2113 | ed4385685bcf2d4935c8dbbab4bde16603da1329e092d2bf36c3dadd67e9a85c |
+| prism-bash.js | 6143 | 6260814110e5182f2956e3bd257429548d9dbf2a9b66a63719b26cf9fac966a7 |
+| prism-yaml.js | 1970 | 719c8e8b8c344dc9de510c729f65ba840b1502a0a8e7e25e2ad19ee715f65c02 |
+
+# YAML parsing
+
+`go.yaml.in/yaml/v3` (MIT and Apache-2.0), the YAML organization's maintained continuation of the archived `gopkg.in/yaml.v3`, pinned in `go.mod`/`go.sum`. It is the only YAML library; Ansible parsing uses it and Kubernetes support must reuse it. Documents are decoded to nodes for structure and line numbers only: aliases are not expanded and no values are evaluated.

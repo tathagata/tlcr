@@ -74,3 +74,40 @@ func TestPythonTabIndentation(t *testing.T) {
 		t.Errorf("func b range wrong: %#v", units[1])
 	}
 }
+
+func TestPythonWrappedSignaturesAndColumnZeroComments(t *testing.T) {
+	src := `@decorate(
+    option=True,
+)
+def build(
+    first,
+    second,
+) -> int:
+    value = [
+        first,
+]
+# a comment at column 0 does not end the function
+    return value
+
+
+async def fetch():
+    return 1
+`
+	units := pythonUnits("wrapped.py", []byte(src))
+	if len(units) != 2 {
+		t.Fatalf("expected 2 functions, got %#v", units)
+	}
+	if units[0].Name != "func build" || units[0].Start != 1 || units[0].End != 14 {
+		t.Errorf("wrapped signature should not end the unit at its closing bracket: %#v", units[0])
+	}
+	if units[1].Name != "func fetch" || units[1].Start != 15 {
+		t.Errorf("async def range wrong: %#v", units[1])
+	}
+}
+
+func TestPythonMixedIndentWidths(t *testing.T) {
+	units := pythonUnits("mixed.py", []byte("class A:\n  def two(self):\n\t\treturn 1\n\ndef b():\n        return 2\n \ndef c():\n\tpass\n"))
+	if len(units) != 3 || units[0].Name != "class A" || units[0].End != 4 || units[1].End != 7 || units[2].Name != "func c" {
+		t.Fatalf("top-level detection must not depend on indent width: %#v", units)
+	}
+}

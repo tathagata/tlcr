@@ -23,7 +23,10 @@ for (const [language, source] of [
   ['markup','<script>alert("not executed")</script>\n'],
   ['css','/* comment */ body { color: red; }\n'],
   ['jsx','const component = <p>{value}</p>;'],
-  ['tsx','const component: Element = <p>{value}</p>;']
+  ['tsx','const component: Element = <p>{value}</p>;'],
+  ['python','@decorated\ndef main():\n    """first\n    second"""\n    return f"<b>{value}</b>"\n'],
+  ['bash','#!/bin/bash\ndeploy() {\n  cat <<EOF\n<script>${HOME}</script>\nEOF\n}\n'],
+  ['yaml','- name: Install\n  apt:\n    name: "{{ item }}"\n  notes: |\n    first\n    second\n']
 ]) test(`${language}: preserves every source character and line`, () => {
   const lines = tokenize(source, language);
   assert.ok(lines); assert.equal(lines.map(row => row.map(token => token.text).join('')).join('\n'), source);
