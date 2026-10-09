@@ -42,6 +42,7 @@ func (a *App) Routes() http.Handler {
 	mux.HandleFunc("GET /api/evidence", a.evidence)
 	mux.HandleFunc("GET /api/tour", a.tour)
 	mux.HandleFunc("GET /api/review", a.review)
+	mux.HandleFunc("GET /api/changes", a.changes)
 	mux.HandleFunc("GET /api/commands", func(w http.ResponseWriter, _ *http.Request) { jsonResponse(w, 200, core.Commands()) })
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		host, port, err := net.SplitHostPort(r.Host)
@@ -226,7 +227,17 @@ func serviceError(w http.ResponseWriter, err error) {
 }
 
 func (a *App) review(w http.ResponseWriter, r *http.Request) {
-	result, err := a.repository.Review(r.Context(), r.URL.Query().Get("base"))
+	query := r.URL.Query()
+	result, err := a.repository.ReviewChange(r.Context(), core.ChangeSelection{Base: query.Get("base"), Head: query.Get("head"), Commit: query.Get("commit")})
+	if err != nil {
+		serviceError(w, err)
+		return
+	}
+	jsonResponse(w, 200, result)
+}
+
+func (a *App) changes(w http.ResponseWriter, r *http.Request) {
+	result, err := a.repository.Changes(r.Context())
 	if err != nil {
 		serviceError(w, err)
 		return

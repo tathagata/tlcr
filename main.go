@@ -57,7 +57,7 @@ func main() {
 		return
 	}
 	flag.Usage = func() {
-		_, _ = fmt.Fprintln(flag.CommandLine.Output(), "Usage: tlcr [options] [repository] | tlcr tour [--kind architecture] [repository] | tlcr review [--base HEAD] [repository]")
+		_, _ = fmt.Fprintln(flag.CommandLine.Output(), "Usage: tlcr [options] [repository] | tlcr tour [--kind architecture] [repository] | tlcr review [--base REV] [--head REV | --commit REV | --staged | --unstaged] [repository]")
 		flag.PrintDefaults()
 	}
 	configPath := flag.String("config", "", "path to config JSON (default: beside binary)")

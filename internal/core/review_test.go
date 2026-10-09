@@ -65,6 +65,7 @@ func assertReviewChanges(t *testing.T, review ChangeReview) {
 			t.Fatal("private source included")
 		}
 	}
+	// Before could have become After or Added: an ambiguous rename stays removed and added.
 	if statuses["func Before"] != "removed" || statuses["func After"] != "added" || statuses["func main"] != "modified" || statuses["func Added"] != "added" {
 		t.Fatalf("changes: %v", statuses)
 	}
@@ -140,5 +141,315 @@ func TestReviewPreservesRelatedTestsAndModuleIdentity(t *testing.T) {
 	put(t, root, "go.mod", "module changed.test/review\n")
 	if err := idx.CheckPolicy(); err == nil {
 		t.Fatal("module identity changes must invalidate the snapshot")
+	}
+}
+
+func reviewStatuses(t *testing.T, repo *Repository, selection ChangeSelection) (ChangeReview, map[string]string) {
+	t.Helper()
+	review, err := repo.ReviewChange(context.Background(), selection)
+	if err != nil {
+		t.Fatalf("%+v: %v", selection, err)
+	}
+	statuses := map[string]string{}
+	for _, change := range review.Changes {
+		statuses[change.Node.Name] = change.Status
+	}
+	return review, statuses
+}
+
+func TestReviewSelectsCommitsRangesAndIndex(t *testing.T) {
+	root := reviewFixture(t)
+	first := strings.TrimSpace(testGit(t, root, "rev-parse", "HEAD"))
+	put(t, root, "main.go", "package main\nfunc main(){ Before(); Second() }\nfunc Before(){}\nfunc Second(){}\n")
+	testGit(t, root, "commit", "-am", "Second")
+	put(t, root, "main.go", "package main\nfunc main(){ Before(); Second() }\nfunc Before(){}\nfunc Second(){}\nfunc Third(){}\n")
+	testGit(t, root, "commit", "-am", "Third")
+	put(t, root, "main.go", "package main\nfunc main(){ Before(); Second() }\nfunc Before(){}\nfunc Second(){}\nfunc Third(){}\nfunc Staged(){}\n")
+	testGit(t, root, "add", "main.go")
+	put(t, root, "main.go", "package main\nfunc main(){ Before(); Second() }\nfunc Before(){}\nfunc Second(){}\nfunc Third(){}\nfunc Staged(){}\nfunc Unstaged(){}\n")
+	put(t, root, "untracked.go", "package main\nfunc Untracked(){}\n")
+	idx, err := Scan(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	repo := NewRepository(idx)
+	status := testGit(t, root, "status", "--porcelain=v1")
+	for _, tc := range []struct {
+		name      string
+		selection ChangeSelection
+		added     []string
+		absent    []string
+		live      bool
+	}{
+		{"uncommitted", ChangeSelection{}, []string{"func Staged", "func Unstaged", "func Untracked"}, []string{"func Third"}, true},
+		{"staged", ChangeSelection{Head: SideIndex}, []string{"func Staged"}, []string{"func Unstaged", "func Untracked"}, false},
+		{"unstaged", ChangeSelection{Base: SideIndex}, []string{"func Unstaged", "func Untracked"}, []string{"func Staged"}, true},
+		{"commit", ChangeSelection{Commit: "HEAD~1"}, []string{"func Second"}, []string{"func Third", "func Staged"}, false},
+		{"range", ChangeSelection{Base: first, Head: "HEAD"}, []string{"func Second", "func Third"}, []string{"func Staged"}, false},
+		{"root commit", ChangeSelection{Commit: first}, []string{"func main", "func Before", "func TestMain"}, []string{"func Second"}, false},
+	} {
+		review, statuses := reviewStatuses(t, repo, tc.selection)
+		for _, name := range tc.added {
+			if statuses[name] != "added" {
+				t.Errorf("%s: %s is %q in %v", tc.name, name, statuses[name], statuses)
+			}
+		}
+		for _, name := range tc.absent {
+			if _, ok := statuses[name]; ok {
+				t.Errorf("%s: unexpected %s", tc.name, name)
+			}
+		}
+		if review.Live != tc.live || review.BaseLabel == "" || review.HeadLabel == "" || review.Revision != idx.Revision {
+			t.Errorf("%s: sides %#v", tc.name, review)
+		}
+	}
+	review, statuses := reviewStatuses(t, repo, ChangeSelection{Commit: "HEAD~1"})
+	if statuses["func main"] != "modified" || review.Head != strings.TrimSpace(testGit(t, root, "rev-parse", "HEAD~1")) || review.Base != first {
+		t.Fatalf("commit pair: %v %s %s", statuses, review.Base, review.Head)
+	}
+	if after := testGit(t, root, "status", "--porcelain=v1"); status != after {
+		t.Fatal("review modified Git state")
+	}
+}
+
+func TestReviewMergeUsesFirstParentAndRejectsBadSelections(t *testing.T) {
+	root := reviewFixture(t)
+	trunk := strings.TrimSpace(testGit(t, root, "rev-parse", "--abbrev-ref", "HEAD"))
+	testGit(t, root, "checkout", "-b", "side")
+	put(t, root, "side.go", "package main\nfunc Side(){}\n")
+	testGit(t, root, "add", ".")
+	testGit(t, root, "commit", "-m", "Side")
+	testGit(t, root, "checkout", trunk)
+	put(t, root, "trunk.go", "package main\nfunc Trunk(){}\n")
+	testGit(t, root, "add", ".")
+	testGit(t, root, "commit", "-m", "Trunk")
+	testGit(t, root, "merge", "--no-ff", "-m", "Merge side", "side")
+	idx, err := Scan(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	repo := NewRepository(idx)
+	_, statuses := reviewStatuses(t, repo, ChangeSelection{Commit: "HEAD"})
+	if statuses["func Side"] != "added" || statuses["side.go"] != "file context changed" || len(statuses) != 2 {
+		t.Fatalf("merge against first parent: %v", statuses)
+	}
+	for _, selection := range []ChangeSelection{
+		{Commit: "HEAD", Base: "HEAD~1"},
+		{Commit: SideIndex},
+		{Commit: "--help"},
+		{Base: SideWorktree},
+		{Head: SideEmpty},
+		{Base: "HEAD", Head: "HEAD"},
+		{Base: SideIndex, Head: SideIndex},
+		{Head: "does-not-exist"},
+		{Head: ":other"},
+	} {
+		if _, err := repo.ReviewChange(context.Background(), selection); err == nil {
+			t.Errorf("accepted %+v", selection)
+		}
+	}
+	put(t, root, "trunk.go", "package main\nfunc Trunk(){ println(1) }\n")
+	if _, err := repo.ReviewChange(context.Background(), ChangeSelection{Commit: "HEAD"}); err != nil {
+		t.Fatalf("historical review must not depend on working-tree freshness: %v", err)
+	}
+}
+
+func TestReviewHistoricalSidesHonourExclusionsAndLimits(t *testing.T) {
+	root := reviewFixture(t)
+	put(t, root, "secret.pem", "not a key\n")
+	put(t, root, "vault.yml", "$ANSIBLE_VAULT;1.1;AES256\n6162\n")
+	put(t, root, "big.go", "package main\n// "+strings.Repeat("x", maxFileBytes)+"\n")
+	put(t, root, "gone.go", "package main\nfunc Gone(){}\n")
+	testGit(t, root, "add", "-f", ".")
+	testGit(t, root, "commit", "-m", "Mixed")
+	testGit(t, root, "rm", "-q", "gone.go", "big.go")
+	testGit(t, root, "commit", "-m", "Remove")
+	idx, err := Scan(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	review, statuses := reviewStatuses(t, NewRepository(idx), ChangeSelection{Commit: "HEAD"})
+	if statuses["func Gone"] != "removed" || statuses["gone.go"] != "file context changed" || len(statuses) != 2 || review.Files != 1 {
+		t.Fatalf("exclusions: %v files=%d", statuses, review.Files)
+	}
+	_, statuses = reviewStatuses(t, NewRepository(idx), ChangeSelection{Commit: "HEAD~1"})
+	if statuses["func Gone"] != "added" || len(statuses) != 2 {
+		t.Fatalf("excluded source reviewed: %v", statuses)
+	}
+}
+
+func TestReviewHunksUseFileLineNumbers(t *testing.T) {
+	root := reviewFixture(t)
+	put(t, root, "main.go", "package main\n\nimport \"fmt\"\n\nfunc main(){ Before() }\nfunc Before(){\n\tfmt.Println(1)\n}\n")
+	idx, err := Scan(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	review, err := NewRepository(idx).Review(context.Background(), "HEAD")
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := map[string]UnitChange{}
+	for _, change := range review.Changes {
+		found[change.Node.Name] = change
+	}
+	before := found["func Before"]
+	if before.Added != 3 || before.Removed != 1 || len(before.Hunks) != 1 || before.Hunks[0].Lines[0] != (DiffLine{Op: "-", Text: "func Before(){}", Before: 3}) || before.Hunks[0].Lines[1].After != 6 {
+		t.Fatalf("unit hunks: %#v", before)
+	}
+	file := found["main.go"]
+	if _, moved := found["func main"]; moved || review.Added != 6 || review.Removed != 1 {
+		t.Fatalf("a unit that only moved is not a change; totals +%d -%d", review.Added, review.Removed)
+	}
+	assertFileContextHunk(t, file)
+}
+
+func assertFileContextHunk(t *testing.T, file UnitChange) {
+	t.Helper()
+	if file.Status != "file context changed" || len(file.Hunks) != 1 || file.Added != 3 || file.Removed != 0 {
+		t.Fatalf("file hunks must exclude unit bodies: %#v", file.Hunks)
+	}
+	for _, line := range file.Hunks[0].Lines {
+		if strings.Contains(line.Text, "func ") {
+			t.Fatalf("unit line in file context: %#v", line)
+		}
+	}
+	if last := file.Hunks[0].Lines[2]; last != (DiffLine{Op: "+", Text: "import \"fmt\"", After: 3}) {
+		t.Fatalf("file line numbers: %#v", file.Hunks[0].Lines)
+	}
+}
+
+func signalKinds(change UnitChange) map[string]Signal {
+	kinds := map[string]Signal{}
+	for _, signal := range change.Signals {
+		kinds[signal.Kind] = signal
+	}
+	return kinds
+}
+
+func TestReviewSignalsCallersAndTests(t *testing.T) {
+	root := reviewFixture(t)
+	put(t, root, "lib.go", "package main\nfunc Shared() int { return 1 }\nfunc Untested() int { return Shared() }\nfunc Old() {}\nfunc UsesOld() { Old() }\n")
+	put(t, root, "lib_test.go", "package main\nimport \"testing\"\nfunc TestShared(t *testing.T){ Shared() }\nfunc TestOther(t *testing.T){ Shared() }\n")
+	put(t, root, "deploy.sh", "#!/bin/sh\nrun() {\n  echo 1\n}\n")
+	testGit(t, root, "add", ".")
+	testGit(t, root, "commit", "-m", "Library")
+	put(t, root, "lib.go", "package main\nfunc Shared() int { return 2 }\nfunc Untested() int { return Shared() + 1 }\nfunc UsesOld() { Old() }\nfunc Fresh() int { return Shared() }\n")
+	put(t, root, "lib_test.go", "package main\nimport \"testing\"\nfunc TestShared(t *testing.T){ if Shared() != 2 { t.Fatal() } }\nfunc TestOther(t *testing.T){ Shared() }\n")
+	put(t, root, "deploy.sh", "#!/bin/sh\nrun() {\n  echo 2\n}\n")
+	idx, err := Scan(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	review, err := NewRepository(idx).Review(context.Background(), "HEAD")
+	if err != nil {
+		t.Fatal(err)
+	}
+	changes := map[string]UnitChange{}
+	for _, change := range review.Changes {
+		changes[change.Node.Name] = change
+	}
+	shared := signalKinds(changes["func Shared"])
+	if len(shared) != 2 || shared[SignalTestsChanged].Related[0].Node.Name != "func TestShared" || shared[SignalTestsUnchanged].Related[0].Node.Name != "func TestOther" {
+		t.Fatalf("Shared: callers Untested and Fresh both changed, tests split: %#v", changes["func Shared"].Signals)
+	}
+	if kinds := signalKinds(changes["func Untested"]); len(kinds) != 1 || kinds[SignalNoKnownTest].Detail == "" {
+		t.Fatalf("Untested: %#v", kinds)
+	}
+	assertRemovedAndUnsupportedSignals(t, changes)
+	assertSignalSummary(t, review)
+}
+
+func assertSignalSummary(t *testing.T, review ChangeReview) {
+	t.Helper()
+	counts := map[string]int{}
+	for _, signal := range review.Signals {
+		counts[signal.Kind] = signal.Units
+	}
+	if counts[SignalNoKnownTest] != 2 || counts[SignalUnchangedCallers] != 1 || counts[SignalTestsChanged] != 1 || counts[SignalTestsUnchanged] != 1 {
+		t.Fatalf("summary: %#v", review.Signals)
+	}
+	limited := 0
+	for _, note := range review.Limitations {
+		if strings.Contains(note, "signals") {
+			limited++
+		}
+	}
+	if limited != 2 {
+		t.Fatalf("limitations: %v", review.Limitations)
+	}
+}
+
+func assertRemovedAndUnsupportedSignals(t *testing.T, changes map[string]UnitChange) {
+	t.Helper()
+	old := signalKinds(changes["func Old"])
+	if changes["func Old"].Status != "removed" || len(old) != 1 || old[SignalUnchangedCallers].Related[0].Node.Name != "func UsesOld" || old[SignalUnchangedCallers].Related[0].Provenance.Path != "lib.go" {
+		t.Fatalf("Old: %#v", changes["func Old"].Signals)
+	}
+	if kinds := signalKinds(changes["func Fresh"]); len(kinds) != 1 || kinds[SignalNoKnownTest].Kind == "" {
+		t.Fatalf("Fresh: %#v", kinds)
+	}
+	if len(changes["run"].Signals) != 0 || len(changes["func TestShared"].Signals) != 0 {
+		t.Fatalf("shell and test units carry no signals: %#v %#v", changes["run"].Signals, changes["func TestShared"].Signals)
+	}
+}
+
+func TestReviewPairsRenamedAndMovedUnits(t *testing.T) {
+	root := reviewFixture(t)
+	body := "\tx := 1\n\ty := x + 1\n\tprintln(x, y)\n"
+	put(t, root, "a.go", "package main\nfunc Stay(){\n"+body+"}\nfunc Travel(){\n"+body+"\tprintln(3)\n}\nfunc TwinOne(){ println(9) }\nfunc TwinTwo(){ println(9) }\nfunc Edited(){\n"+body+"\tprintln(4)\n\tprintln(5)\n}\n")
+	testGit(t, root, "add", ".")
+	testGit(t, root, "commit", "-m", "Units")
+	put(t, root, "a.go", "package main\nfunc Stay(){\n"+body+"}\nfunc Twin(){ println(9) }\nfunc Reworked(){\n"+body+"\tprintln(4)\n\tprintln(6)\n}\n")
+	put(t, root, "b.go", "package main\nfunc Travel(){\n"+body+"\tprintln(3)\n}\n")
+	idx, err := Scan(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	review, err := NewRepository(idx).Review(context.Background(), "HEAD")
+	if err != nil {
+		t.Fatal(err)
+	}
+	changes := map[string]UnitChange{}
+	for _, change := range review.Changes {
+		changes[change.Node.Name] = change
+	}
+	assertPairedUnits(t, changes)
+}
+
+func assertPairedUnits(t *testing.T, changes map[string]UnitChange) {
+	t.Helper()
+	moved := changes["func Travel"]
+	if moved.Status != "moved" || moved.Node.Path != "b.go" || moved.Before == nil || moved.Before.Path != "a.go" || moved.Added+moved.Removed != 0 {
+		t.Fatalf("moved: %#v", moved)
+	}
+	reworked := changes["func Reworked"]
+	if reworked.Status != "renamed" || reworked.Before.Name != "func Edited" || reworked.Added != 2 || reworked.Removed != 2 || reworked.Hunks[0].Lines[0].Before != reworked.Before.Start {
+		t.Fatalf("renamed with an edit: %#v", reworked)
+	}
+	if changes["func TwinOne"].Status != "removed" || changes["func TwinTwo"].Status != "removed" || changes["func Twin"].Status != "added" {
+		t.Fatalf("ambiguous candidates must not be paired: %v %v %v", changes["func TwinOne"].Status, changes["func TwinTwo"].Status, changes["func Twin"].Status)
+	}
+	if _, listed := changes["func Edited"]; listed {
+		t.Fatal("renamed unit also listed as removed")
+	}
+}
+
+func TestRenameHelpers(t *testing.T) {
+	if got := replaceIdentifier("Old(); OldTimer(); x.Old; _Old", "Old", "New"); got != "New(); OldTimer(); x.New; _Old" {
+		t.Fatal(got)
+	}
+	for name, want := range map[string]string{"func Run": "Run", "method Server.Start": "Start", "resource aws_s3_bucket.logs": "logs", "": ""} {
+		if got := shortName(name); got != want {
+			t.Fatalf("%q: %q", name, got)
+		}
+	}
+	changes := []UnitChange{}
+	for i := 0; i < 70; i++ {
+		node := Node{UnitID: "u", Kind: "function", Name: "func F"}
+		changes = append(changes, UnitChange{Node: node, Status: "removed"}, UnitChange{Node: node, Status: "added"})
+	}
+	if kept, notes := pairRenames(changes, nil, nil); len(kept) != len(changes) || len(notes) != 1 {
+		t.Fatal("unbounded rename comparison")
 	}
 }
