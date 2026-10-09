@@ -16,7 +16,10 @@ import (
 
 // UnitChange compares exact parser ranges, with old source retained for removed units.
 type UnitChange struct {
-	Before               *Node            `json:"before,omitempty"`
+	Before *Node `json:"before,omitempty"`
+	// ID names this change by its content, so a surface can remember what
+	// was read across refreshes: an edited unit gets a new ID.
+	ID                   string           `json:"id"`
 	Status               string           `json:"status"`
 	Cohort               string           `json:"cohort"`
 	BeforeSource         string           `json:"before_source"`
@@ -450,6 +453,10 @@ func compareSnapshots(before, after *Index, oldGraph, newGraph *Graph) ChangeRev
 	})
 	for _, change := range review.Changes {
 		review.Added, review.Removed = review.Added+change.Added, review.Removed+change.Removed
+	}
+	for i := range review.Changes {
+		change := &review.Changes[i]
+		change.ID = Hash(change.Node.ID, change.Status, change.BeforeSource, change.AfterSource)[:16]
 	}
 	signals, notes := attachSignals(review.Changes, oldGraph, newGraph)
 	review.Signals, review.Limitations = signals, append(review.Limitations, notes...)
