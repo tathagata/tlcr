@@ -15,6 +15,9 @@ import (
 
 var objectID = regexp.MustCompile(`^(?:[a-f0-9]{40}|[a-f0-9]{64})$`)
 
+// gitListTimeout bounds one listing of refs, commits or paths.
+const gitListTimeout = 5 * time.Second
+
 type boundedOutput struct {
 	bytes.Buffer
 	limit int

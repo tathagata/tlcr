@@ -339,7 +339,7 @@ func sideBlobs(ctx context.Context, root string, side reviewSide) ([]treeBlob, e
 	default:
 		return nil, nil
 	}
-	data, err := gitRun(ctx, root, nil, 8*1024*1024, 5*time.Second, args...)
+	data, err := gitRun(ctx, root, nil, 8*1024*1024, gitListTimeout, args...)
 	if err != nil {
 		return nil, err
 	}
