@@ -25,6 +25,7 @@ type UnitChange struct {
 	RelationshipsRemoved []Edge           `json:"relationships_removed"`
 	Related              []Recommendation `json:"related"`
 	Hunks                []Hunk           `json:"hunks"`
+	Signals              []Signal         `json:"signals"`
 	Node                 Node             `json:"node"`
 	Added                int              `json:"added"`
 	Removed              int              `json:"removed"`
@@ -66,18 +67,19 @@ type ChangeSelection struct {
 // ChangeReview is a local comparison of two snapshots: commits, the staged
 // index, or the indexed working tree (which includes untracked source).
 type ChangeReview struct {
-	Base           string       `json:"base"`
-	Head           string       `json:"head"`
-	BaseLabel      string       `json:"base_label"`
-	HeadLabel      string       `json:"head_label"`
-	Revision       string       `json:"revision"`
-	Tour           Tour         `json:"tour"`
-	Changes        []UnitChange `json:"changes"`
-	Limitations    []string     `json:"limitations"`
-	Files          int          `json:"files"`
-	GeneratedFiles int          `json:"generated_files"`
-	Added          int          `json:"added"`
-	Removed        int          `json:"removed"`
+	Base           string        `json:"base"`
+	Head           string        `json:"head"`
+	BaseLabel      string        `json:"base_label"`
+	HeadLabel      string        `json:"head_label"`
+	Revision       string        `json:"revision"`
+	Tour           Tour          `json:"tour"`
+	Changes        []UnitChange  `json:"changes"`
+	Limitations    []string      `json:"limitations"`
+	Signals        []SignalCount `json:"signals"`
+	Files          int           `json:"files"`
+	GeneratedFiles int           `json:"generated_files"`
+	Added          int           `json:"added"`
+	Removed        int           `json:"removed"`
 	// Live reports that the head is the indexed working tree, so every
 	// surviving stop can be opened as current source.
 	Live bool `json:"live"`
@@ -136,7 +138,7 @@ func (r *Repository) ReviewChange(ctx context.Context, selection ChangeSelection
 	if size > 4*1024*1024 || len(review.Changes) > 2000 {
 		return ChangeReview{}, failure(TooLarge, errors.New("change review exceeds 4 MiB or 2000 changes; choose a smaller root or closer base"))
 	}
-	review.Limitations = reviewLimitations(live)
+	review.Limitations = append(reviewLimitations(live), review.Limitations...)
 	review.Tour.Limitations = append(review.Tour.Limitations, review.Limitations...)
 	if err := check(); err != nil {
 		return ChangeReview{}, err
@@ -448,6 +450,7 @@ func compareSnapshots(before, after *Index, oldGraph, newGraph *Graph) ChangeRev
 	for _, change := range review.Changes {
 		review.Added, review.Removed = review.Added+change.Added, review.Removed+change.Removed
 	}
+	review.Signals, review.Limitations = attachSignals(review.Changes, oldGraph, newGraph)
 	review.Tour.Stops, review.Tour.Limitations = changeStops(review.Changes, before.Revision)
 	return review
 }

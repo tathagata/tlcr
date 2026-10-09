@@ -317,3 +317,78 @@ func assertFileContextHunk(t *testing.T, file UnitChange) {
 		t.Fatalf("file line numbers: %#v", file.Hunks[0].Lines)
 	}
 }
+
+func signalKinds(change UnitChange) map[string]Signal {
+	kinds := map[string]Signal{}
+	for _, signal := range change.Signals {
+		kinds[signal.Kind] = signal
+	}
+	return kinds
+}
+
+func TestReviewSignalsCallersAndTests(t *testing.T) {
+	root := reviewFixture(t)
+	put(t, root, "lib.go", "package main\nfunc Shared() int { return 1 }\nfunc Untested() int { return Shared() }\nfunc Old() {}\nfunc UsesOld() { Old() }\n")
+	put(t, root, "lib_test.go", "package main\nimport \"testing\"\nfunc TestShared(t *testing.T){ Shared() }\nfunc TestOther(t *testing.T){ Shared() }\n")
+	put(t, root, "deploy.sh", "#!/bin/sh\nrun() {\n  echo 1\n}\n")
+	testGit(t, root, "add", ".")
+	testGit(t, root, "commit", "-m", "Library")
+	put(t, root, "lib.go", "package main\nfunc Shared() int { return 2 }\nfunc Untested() int { return Shared() + 1 }\nfunc UsesOld() { Old() }\nfunc Fresh() int { return Shared() }\n")
+	put(t, root, "lib_test.go", "package main\nimport \"testing\"\nfunc TestShared(t *testing.T){ if Shared() != 2 { t.Fatal() } }\nfunc TestOther(t *testing.T){ Shared() }\n")
+	put(t, root, "deploy.sh", "#!/bin/sh\nrun() {\n  echo 2\n}\n")
+	idx, err := Scan(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	review, err := NewRepository(idx).Review(context.Background(), "HEAD")
+	if err != nil {
+		t.Fatal(err)
+	}
+	changes := map[string]UnitChange{}
+	for _, change := range review.Changes {
+		changes[change.Node.Name] = change
+	}
+	shared := signalKinds(changes["func Shared"])
+	if len(shared) != 2 || shared[SignalTestsChanged].Related[0].Node.Name != "func TestShared" || shared[SignalTestsUnchanged].Related[0].Node.Name != "func TestOther" {
+		t.Fatalf("Shared: callers Untested and Fresh both changed, tests split: %#v", changes["func Shared"].Signals)
+	}
+	if kinds := signalKinds(changes["func Untested"]); len(kinds) != 1 || kinds[SignalNoKnownTest].Detail == "" {
+		t.Fatalf("Untested: %#v", kinds)
+	}
+	assertRemovedAndUnsupportedSignals(t, changes)
+	assertSignalSummary(t, review)
+}
+
+func assertSignalSummary(t *testing.T, review ChangeReview) {
+	t.Helper()
+	counts := map[string]int{}
+	for _, signal := range review.Signals {
+		counts[signal.Kind] = signal.Units
+	}
+	if counts[SignalNoKnownTest] != 2 || counts[SignalUnchangedCallers] != 1 || counts[SignalTestsChanged] != 1 || counts[SignalTestsUnchanged] != 1 {
+		t.Fatalf("summary: %#v", review.Signals)
+	}
+	limited := 0
+	for _, note := range review.Limitations {
+		if strings.Contains(note, "signals") {
+			limited++
+		}
+	}
+	if limited != 2 {
+		t.Fatalf("limitations: %v", review.Limitations)
+	}
+}
+
+func assertRemovedAndUnsupportedSignals(t *testing.T, changes map[string]UnitChange) {
+	t.Helper()
+	old := signalKinds(changes["func Old"])
+	if changes["func Old"].Status != "removed" || len(old) != 1 || old[SignalUnchangedCallers].Related[0].Node.Name != "func UsesOld" || old[SignalUnchangedCallers].Related[0].Provenance.Path != "lib.go" {
+		t.Fatalf("Old: %#v", changes["func Old"].Signals)
+	}
+	if kinds := signalKinds(changes["func Fresh"]); len(kinds) != 1 || kinds[SignalNoKnownTest].Kind == "" {
+		t.Fatalf("Fresh: %#v", kinds)
+	}
+	if len(changes["run"].Signals) != 0 || len(changes["func TestShared"].Signals) != 0 {
+		t.Fatalf("shell and test units carry no signals: %#v %#v", changes["run"].Signals, changes["func TestShared"].Signals)
+	}
+}
