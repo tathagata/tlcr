@@ -93,19 +93,20 @@ jobs:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
         run: go build -trimpath -ldflags="-s -w -X main.version=${{ needs.version.outputs.tag }}" -o dist/${{ matrix.artifact }}/${{ matrix.output }} .
-      - name: Package canonical executable
+      - name: Package canonical executable with its license
         env:
           ARTIFACT: ${{ matrix.artifact }}
           OUTPUT: ${{ matrix.output }}
           TARGET_OS: ${{ matrix.goos }}
         run: |
           mkdir -p release
+          cp LICENSE "dist/$ARTIFACT/LICENSE"
           if [ "$TARGET_OS" = windows ]; then
             archive="$ARTIFACT.zip"
-            (cd "dist/$ARTIFACT" && zip "../../release/$archive" "$OUTPUT")
+            (cd "dist/$ARTIFACT" && zip "../../release/$archive" "$OUTPUT" LICENSE)
           else
             archive="$ARTIFACT.tar.gz"
-            tar -czf "release/$archive" -C "dist/$ARTIFACT" "$OUTPUT"
+            tar -czf "release/$archive" -C "dist/$ARTIFACT" "$OUTPUT" LICENSE
           fi
           (cd release && shasum -a 256 "$archive" > "$ARTIFACT.sha256")
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
