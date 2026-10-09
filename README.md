@@ -132,3 +132,7 @@ The optional AI action first shows the exact prompt, provider/model and estimate
 Indexing is bounded to 4,096 recognized files / 32 MiB, 256 KiB per file, 50,000 visited entries and 64 directory levels. Symlinks, nonregular files, ignored paths, known private state and Ansible Vault ciphertext (wholly encrypted files, and YAML files with inline `!vault` values) are omitted. Changes to exclusion rules or module identity invalidate the snapshot. A local change review allows 128 historical blob reads, 4 MiB of returned changed source, 2,000 change entries and a 15-second Git-operation deadline. Large comparisons fail clearly and can be narrowed by choosing a smaller root or closer base. Tours show at most 32 change stops; all detected changes remain in the review result.
 
 Go regression tests run with `make test`; pure-JavaScript highlighting tests run with `make test-ui` (Docker; no npm installation needed). Runtime exploration remains read-only toward the target repository. Explanation cache writes use private temporary files and atomic replacement.
+
+## License
+
+[MIT](LICENSE). Vendored third-party code keeps its own license; see [docs/THIRD_PARTY.md](docs/THIRD_PARTY.md).
