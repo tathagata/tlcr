@@ -106,18 +106,29 @@ See [the implementation roadmap](docs/ROADMAP.md) for the dependency-ordered pat
 
 Opening a repository now starts with a deterministic orientation: ranked entry points, source-backed roles, callers, local dependencies, and direct test relationships. Read Next links every recommendation to its source provenance. Git history and exact ADR/changelog references are local evidence; unavailable Git does not prevent browsing.
 
-Choose Architecture, Execution Flow, Data & State, Testing Strategy, or Recent Changes from the Tour menu. Use `n`/`p` for next/previous, `[`/`]` for reading history, `/` to find files or symbols, and `?` for the complete keyboard map. Tours can be paused and resumed in the same page. Refresh explicitly rebuilds the snapshot after edits; navigation does not rescan the repository.
+Choose Architecture, Execution Flow, Data & State, Testing Strategy, or Recent Changes from the Tour menu, or review a change (below). Use `n`/`p` for next/previous, `[`/`]` for reading history, `/` to find files or symbols, and `?` for the complete keyboard map. Tours can be paused and resumed in the same page. Refresh explicitly rebuilds the snapshot after edits; navigation does not rescan the repository.
 
 The same core is available without the browser:
 
 ```sh
 tlcr tour --kind architecture ./repository
 tlcr tour --kind testing --json ./repository
-tlcr review --base HEAD ./repository
-tlcr review --base main --json ./repository
+tlcr review ./repository                        # uncommitted work against HEAD
+tlcr review --staged ./repository               # what the next commit would contain
+tlcr review --commit HEAD~1 ./repository        # one commit against its first parent
+tlcr review --base main --head feature --json ./repository
+tlcr review --list ./repository                 # what can be reviewed here
 ```
 
-`review` compares a local commit with the indexed working-tree snapshot, including staged and untracked permitted source. It makes no GitHub, model, or network requests. Change Tour is also available in the browser, with a local base selector and base/working-tree source panes. JSON includes before/after source, added/removed relationships, related callers/tests, and an ordered tour. Removed units retain their base source. Renamed symbols are conservatively reported as added/removed, and text outside parsed units gets a file-context stop. Standard Go generated files can be collapsed when both versions contain the generated-code marker. GitHub review comments are not integrated yet.
+### Reviewing a change
+
+Press `c` (or **Review a change**) to pick what to read: uncommitted, staged or unstaged work, a recent commit, or a local or remote-tracking branch against its merge base with the default branch. You can also type any local revision, or a range as `A..B`. Everything comes from local Git objects: nothing is fetched, checked out or written, so to review someone else's branch, fetch it yourself first.
+
+The review is a tour of changed units, ordered contracts first, then implementation, tests and documentation. Each stop shows a unified diff with file line numbers and syntax highlighting (`v` switches to the full source of both sides, `J`/`K` move between hunks). The sidebar lists every changed unit with its `+`/`−` line counts; `x` marks a stop read and `u` jumps to the next unread one. Read marks live in memory for the session, and a unit that changes after a refresh is unread again.
+
+Beside the diff are facts the diff does not show, each with its source: callers that were not changed, directly related tests that did or did not change with the unit, and relationships added or removed. When the head is your working tree, the usual Read Next, callers (`g c`), tests (`g t`), local evidence and optional AI enrichment are available at the stop. Following one pauses the tour and `b` returns to the stop. For a historical head these relationships come from the reviewed snapshot, and a link says so when current source differs.
+
+A removed and an added unit are shown as renamed or moved only when each is the other's single closest match; otherwise they stay removed and added. Caller and test signals come from direct, statically resolved Go calls only, so other languages show none rather than a misleading "no callers". Text outside parsed units gets a file-context stop. Standard Go generated files are collapsed when both versions carry the generated-code marker. `--json` includes both sources, hunks, signals, relationship changes and the ordered tour. GitHub review comments are not integrated.
 
 Go and Terraform have structural units and local relationships. Python has one unit per top-level `def`/`async def`/`class` (decorators included, methods not split out), found by indentation rather than a full parse. Shell scripts (`.sh`, `.bash`, or an extension-less file with an `sh`/`bash` shebang) have one unit per function; a definition whose opening brace is on the next line is not recognized. Ansible playbooks have one unit per play and task lists one per task, classified from the YAML structure rather than the path, with nothing templated or executed. Other YAML (including Kubernetes manifests), frontend and document files currently have whole-file fallback units, as does any file whose structure cannot be read. The Go graph resolves indexed local packages without running builds or downloading modules; external calls, dynamic interface dispatch and unresolved references are omitted. Role ranking and Tour ordering are explicitly heuristic, not proof of runtime behavior or correctness.
 
