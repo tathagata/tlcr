@@ -276,3 +276,44 @@ func TestReviewHistoricalSidesHonourExclusionsAndLimits(t *testing.T) {
 		t.Fatalf("excluded source reviewed: %v", statuses)
 	}
 }
+
+func TestReviewHunksUseFileLineNumbers(t *testing.T) {
+	root := reviewFixture(t)
+	put(t, root, "main.go", "package main\n\nimport \"fmt\"\n\nfunc main(){ Before() }\nfunc Before(){\n\tfmt.Println(1)\n}\n")
+	idx, err := Scan(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	review, err := NewRepository(idx).Review(context.Background(), "HEAD")
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := map[string]UnitChange{}
+	for _, change := range review.Changes {
+		found[change.Node.Name] = change
+	}
+	before := found["func Before"]
+	if before.Added != 3 || before.Removed != 1 || len(before.Hunks) != 1 || before.Hunks[0].Lines[0] != (DiffLine{Op: "-", Text: "func Before(){}", Before: 3}) || before.Hunks[0].Lines[1].After != 6 {
+		t.Fatalf("unit hunks: %#v", before)
+	}
+	file := found["main.go"]
+	if _, moved := found["func main"]; moved || review.Added != 6 || review.Removed != 1 {
+		t.Fatalf("a unit that only moved is not a change; totals +%d -%d", review.Added, review.Removed)
+	}
+	assertFileContextHunk(t, file)
+}
+
+func assertFileContextHunk(t *testing.T, file UnitChange) {
+	t.Helper()
+	if file.Status != "file context changed" || len(file.Hunks) != 1 || file.Added != 3 || file.Removed != 0 {
+		t.Fatalf("file hunks must exclude unit bodies: %#v", file.Hunks)
+	}
+	for _, line := range file.Hunks[0].Lines {
+		if strings.Contains(line.Text, "func ") {
+			t.Fatalf("unit line in file context: %#v", line)
+		}
+	}
+	if last := file.Hunks[0].Lines[2]; last != (DiffLine{Op: "+", Text: "import \"fmt\"", After: 3}) {
+		t.Fatalf("file line numbers: %#v", file.Hunks[0].Lines)
+	}
+}

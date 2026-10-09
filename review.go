@@ -63,7 +63,7 @@ func printReview(out io.Writer, review core.ChangeReview) error {
 		return err
 	}
 	for i, change := range review.Changes {
-		if _, err := fmt.Fprintf(out, "%d. %s · %s\n   %s:%d · %s\n   Relationships: +%d / -%d\n", i+1, change.Status, change.Node.Name, change.Node.Path, change.Node.Start, change.Cohort, len(change.RelationshipsAdded), len(change.RelationshipsRemoved)); err != nil {
+		if _, err := fmt.Fprintf(out, "%d. %s · %s · +%d −%d lines\n   %s:%d · %s\n   Relationships: +%d / -%d\n", i+1, change.Status, change.Node.Name, change.Added, change.Removed, change.Node.Path, change.Node.Start, change.Cohort, len(change.RelationshipsAdded), len(change.RelationshipsRemoved)); err != nil {
 			return err
 		}
 		for _, related := range change.Related {
@@ -101,7 +101,7 @@ func printChanges(ctx context.Context, out io.Writer, repository *core.Repositor
 			return err
 		}
 		for _, change := range section.changes {
-			if _, err := fmt.Fprintf(out, "  %-52s %s\n      %s\n", strings.TrimSpace(change.ID+" "+change.Title), change.Date, reviewCommand(change.Selection)); err != nil {
+			if _, err := fmt.Fprintf(out, "  %s\n      %s\n      %s\n", strings.TrimSpace(change.ID+" "+change.Title), strings.TrimSpace(change.Date+" "+change.Detail), reviewCommand(change.Selection)); err != nil {
 				return err
 			}
 		}

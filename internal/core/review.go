@@ -24,7 +24,26 @@ type UnitChange struct {
 	RelationshipsAdded   []Edge           `json:"relationships_added"`
 	RelationshipsRemoved []Edge           `json:"relationships_removed"`
 	Related              []Recommendation `json:"related"`
+	Hunks                []Hunk           `json:"hunks"`
 	Node                 Node             `json:"node"`
+	Added                int              `json:"added"`
+	Removed              int              `json:"removed"`
+	// WhitespaceOnly marks a unit whose two sides differ only in spacing.
+	WhitespaceOnly bool `json:"whitespace_only"`
+}
+
+// setDiff attaches line hunks numbered from each side's position in its file.
+func (c *UnitChange) setDiff() {
+	beforeStart := 1
+	if c.Before != nil {
+		beforeStart = c.Before.Start
+	}
+	c.apply(diffSources(c.BeforeSource, c.AfterSource, beforeStart, c.Node.Start))
+}
+
+func (c *UnitChange) apply(d unitDiff) {
+	c.Hunks, c.Added, c.Removed = d.hunks, d.added, d.removed
+	c.WhitespaceOnly = whitespaceOnly(c.BeforeSource, c.AfterSource)
 }
 
 // Review sides that are not a commit. A colon cannot appear in a ref name, so
@@ -57,6 +76,8 @@ type ChangeReview struct {
 	Limitations    []string     `json:"limitations"`
 	Files          int          `json:"files"`
 	GeneratedFiles int          `json:"generated_files"`
+	Added          int          `json:"added"`
+	Removed        int          `json:"removed"`
 	// Live reports that the head is the indexed working tree, so every
 	// surviving stop can be opened as current source.
 	Live bool `json:"live"`
@@ -424,6 +445,9 @@ func compareSnapshots(before, after *Index, oldGraph, newGraph *Graph) ChangeRev
 		}
 		return a.Node.ID < b.Node.ID
 	})
+	for _, change := range review.Changes {
+		review.Added, review.Removed = review.Added+change.Added, review.Removed+change.Removed
+	}
 	review.Tour.Stops, review.Tour.Limitations = changeStops(review.Changes, before.Revision)
 	return review
 }
@@ -500,7 +524,12 @@ func changedFileUnits(before, after *Index, oldGraph, newGraph *Graph, path stri
 		if !ok {
 			node, _ = oldGraph.Node("file:" + path)
 		}
-		out = append(out, UnitChange{Node: node, Status: "file context changed", Cohort: changeCohort(node), BeforeSource: before.sources[path], AfterSource: after.sources[path], RelationshipsAdded: []Edge{}, RelationshipsRemoved: []Edge{}, Related: []Recommendation{}})
+		change := UnitChange{Node: node, Status: "file context changed", Cohort: changeCohort(node), BeforeSource: before.sources[path], AfterSource: after.sources[path], RelationshipsAdded: []Edge{}, RelationshipsRemoved: []Edge{}, Related: []Recommendation{}}
+		// Unit bodies have their own stops: diff only the text outside them.
+		oldLines, oldNumbers := uncoveredLines(before.sources[path], oldNodes)
+		newLines, newNumbers := uncoveredLines(after.sources[path], newNodes)
+		change.apply(diffNumbered(oldLines, newLines, func(i int) int { return oldNumbers[i] }, func(j int) int { return newNumbers[j] }))
+		out = append(out, change)
 	}
 	return out
 }
@@ -533,12 +562,30 @@ func compareUnit(before, after *Index, oldGraph, newGraph *Graph, oldNodes, newN
 		change.Status = "removed"
 	}
 	change.RelationshipsAdded, change.RelationshipsRemoved = added, removed
+	change.setDiff()
 	if currentOK {
 		change.Related = newGraph.ReadNext(id)
 	} else {
 		change.Related = oldGraph.ReadNext(id)
 	}
 	return &change
+}
+
+// uncoveredLines returns the lines no unit covers, with their file line numbers.
+func uncoveredLines(source string, nodes map[string]Node) ([]string, []int) {
+	covered := map[int]bool{}
+	for _, n := range nodes {
+		for line := n.Start; line <= n.End; line++ {
+			covered[line] = true
+		}
+	}
+	lines, numbers := []string{}, []int{}
+	for i, line := range sourceLines(source) {
+		if !covered[i+1] {
+			lines, numbers = append(lines, line), append(numbers, i+1)
+		}
+	}
+	return lines, numbers
 }
 
 func outsideUnits(idx *Index, nodes map[string]Node, path string) string {
