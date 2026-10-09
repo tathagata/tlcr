@@ -39,11 +39,14 @@ func NewRegistry(parsers ...ParserRegistration) (*Registry, error) {
 	return &Registry{parsers: copyParsers}, nil
 }
 
+// parserPeekBytes bounds the content a parser may inspect to claim a file.
+const parserPeekBytes = 4096
+
 // Parse returns a whole-file unit when a recognized file has no reliable structure.
 func (r *Registry) Parse(path string, data []byte) (FileEntry, bool) {
 	peek := data
-	if len(peek) > 4096 {
-		peek = peek[:4096]
+	if len(peek) > parserPeekBytes {
+		peek = peek[:parserPeekBytes]
 	}
 	for _, candidate := range r.parsers {
 		parser := candidate.Parser
@@ -83,7 +86,9 @@ func DefaultRegistry() *Registry {
 		ParserRegistration{Parser: sourceParser{kind: "go", extensions: "|.go|", parse: goUnits}, Priority: 90},
 		ParserRegistration{Parser: sourceParser{kind: "python", extensions: "|.py|", parse: pythonUnits}, Priority: 85},
 		ParserRegistration{Parser: shellParser{}, Priority: 84},
+		ParserRegistration{Parser: ansibleParser{}, Priority: 83},
 		ParserRegistration{Parser: sourceParser{kind: "frontend", extensions: "|.js|.jsx|.ts|.tsx|.html|.css|", parse: nil}, Priority: 80},
+		ParserRegistration{Parser: sourceParser{kind: "yaml", extensions: "|.yml|.yaml|", parse: nil}, Priority: 20},
 		ParserRegistration{Parser: sourceParser{kind: "document", extensions: "|.md|.mdx|.txt|", parse: nil}, Priority: 10},
 	)
 	return registry

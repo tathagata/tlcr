@@ -14,7 +14,8 @@ var pythonDefRe = regexp.MustCompile(`^(async\s+def|def|class)\s+([A-Za-z_][A-Za
 // prefers a small hand-rolled reader over a new dependency where one is
 // reasonably tractable (see gitignore.go). Nested/method-level units are
 // intentionally out of scope; a line inside a multi-line triple-quoted
-// string is never mistaken for a top-level statement.
+// string, a column-0 comment and a column-0 closing bracket are never
+// mistaken for a top-level statement.
 func pythonUnits(path string, data []byte) []Unit {
 	lines := strings.Split(string(data), "\n")
 	units := []Unit{}
@@ -46,17 +47,18 @@ func pythonUnits(path string, data []byte) []Unit {
 			continue
 		}
 
-		isTopLevel := raw[0] != ' ' && raw[0] != '\t'
-
-		for _, delim := range []string{`"""`, "'''"} {
-			if strings.Count(raw, delim)%2 == 1 {
-				inString = true
-				stringDelim = delim
-				break
-			}
+		// A comment never ends a block, whatever its indentation, and its
+		// text must not be read as a string delimiter.
+		if strings.HasPrefix(trimmed, "#") {
+			continue
 		}
 
-		if !isTopLevel {
+		if delim := pythonOpenString(raw); delim != "" {
+			inString = true
+			stringDelim = delim
+		}
+
+		if !pythonStartsStatement(raw) {
 			continue
 		}
 
@@ -89,4 +91,22 @@ func pythonUnits(path string, data []byte) []Unit {
 	}
 	closeCurrent(len(lines))
 	return uniqueUnits(units)
+}
+
+// pythonOpenString returns the triple-quote delimiter a line leaves open.
+func pythonOpenString(line string) string {
+	for _, delim := range []string{`"""`, "'''"} {
+		if strings.Count(line, delim)%2 == 1 {
+			return delim
+		}
+	}
+	return ""
+}
+
+// pythonStartsStatement reports whether a non-blank line begins a top-level
+// statement. Any leading whitespace means it does not, whatever the indent
+// width; nor does a column-0 closing bracket, which continues the previous
+// statement, as in a signature wrapped one parameter per line.
+func pythonStartsStatement(line string) bool {
+	return !strings.ContainsRune(" \t)]}", rune(line[0]))
 }

@@ -180,7 +180,7 @@ func (s *scanState) readFile(rel string) error {
 	if err != nil {
 		return err
 	}
-	if strings.HasPrefix(strings.TrimSpace(string(data)), "$ANSIBLE_VAULT;") {
+	if vaultEncrypted(rel, string(data)) {
 		return nil
 	}
 	entry, ok := s.idx.registry.Parse(rel, data)
@@ -284,7 +284,7 @@ func (idx *Index) Read(path string) (string, *FileEntry, error) {
 	if err != nil {
 		return "", nil, err
 	}
-	if strings.HasPrefix(strings.TrimSpace(string(data)), "$ANSIBLE_VAULT;") {
+	if vaultEncrypted(path, string(data)) {
 		return "", nil, errors.New("encrypted source excluded")
 	}
 

@@ -2,7 +2,10 @@ module github.com/tathagata/coderead
 
 go 1.27.1
 
-require github.com/hashicorp/hcl/v2 v2.24.0
+require (
+	github.com/hashicorp/hcl/v2 v2.24.0
+	go.yaml.in/yaml/v3 v3.0.5
+)
 
 require (
 	github.com/agext/levenshtein v1.2.1 // indirect
