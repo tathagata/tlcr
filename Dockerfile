@@ -3,7 +3,7 @@
 # GO_VERSION is passed in by `make` (read from go.mod), so the toolchain
 # version lives in exactly one place. Override with:
 #   make build GO_VERSION=1.24
-ARG GO_VERSION=1.27.1
+ARG GO_VERSION=1.27.2
 
 FROM golang:${GO_VERSION}-bookworm AS builder
 WORKDIR /src
