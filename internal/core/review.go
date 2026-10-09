@@ -151,7 +151,7 @@ func reviewLimitations(live bool) []string {
 	if live {
 		scope = "Comparison is against the indexed working-tree snapshot (refresh to include newly created files), including staged and untracked indexed source. Excluded files are omitted on both sides."
 	}
-	return []string{scope, "Exact parser unit identity and source are compared; renamed symbols are shown as removed/added, and semantic intent is not inferred.", "Changes outside structural units are shown as file-level changes. Generated files are collapsed only when a standard Go generated-code marker is present on both sides."}
+	return []string{scope, "Exact parser unit identity and source are compared. A removed and an added unit of the same kind are shown as renamed or moved only when each is the other's single closest match; otherwise they stay removed and added. Semantic intent is not inferred.", "Changes outside structural units are shown as file-level changes. Generated files are collapsed only when a standard Go generated-code marker is present on both sides."}
 }
 
 func resolveSelection(ctx context.Context, root string, selection ChangeSelection) (reviewSide, reviewSide, error) {
@@ -434,6 +434,7 @@ func compareSnapshots(before, after *Index, oldGraph, newGraph *Graph) ChangeRev
 		}
 		review.Changes = append(review.Changes, changedFileUnits(before, after, oldGraph, newGraph, name)...)
 	}
+	review.Changes, review.Limitations = pairRenames(review.Changes, oldGraph, newGraph)
 	sort.SliceStable(review.Changes, func(i, j int) bool {
 		a, b := review.Changes[i], review.Changes[j]
 		if a.Cohort != b.Cohort {
@@ -450,7 +451,8 @@ func compareSnapshots(before, after *Index, oldGraph, newGraph *Graph) ChangeRev
 	for _, change := range review.Changes {
 		review.Added, review.Removed = review.Added+change.Added, review.Removed+change.Removed
 	}
-	review.Signals, review.Limitations = attachSignals(review.Changes, oldGraph, newGraph)
+	signals, notes := attachSignals(review.Changes, oldGraph, newGraph)
+	review.Signals, review.Limitations = signals, append(review.Limitations, notes...)
 	review.Tour.Stops, review.Tour.Limitations = changeStops(review.Changes, before.Revision)
 	return review
 }
@@ -549,7 +551,7 @@ func compareUnit(before, after *Index, oldGraph, newGraph *Graph, oldNodes, newN
 	if !currentOK {
 		next = ""
 	}
-	added, removed := relationshipDelta(oldGraph, newGraph, id)
+	added, removed := relationshipDelta(oldGraph, newGraph, id, id)
 	if oldOK && currentOK && previous == next && len(added) == 0 && len(removed) == 0 {
 		return nil
 	}
@@ -626,12 +628,12 @@ func changeCohort(n Node) string {
 	}
 	return "2 · implementation and file context"
 }
-func relationshipDelta(before, after *Graph, id string) ([]Edge, []Edge) {
+func relationshipDelta(before, after *Graph, oldID, newID string) ([]Edge, []Edge) {
 	old, newEdges := map[string]Edge{}, map[string]Edge{}
-	for _, e := range before.Outgoing(id) {
+	for _, e := range before.Outgoing(oldID) {
 		old[e.Kind+"\x00"+e.To] = e
 	}
-	for _, e := range after.Outgoing(id) {
+	for _, e := range after.Outgoing(newID) {
 		newEdges[e.Kind+"\x00"+e.To] = e
 	}
 	added, removed := []Edge{}, []Edge{}

@@ -65,6 +65,7 @@ func assertReviewChanges(t *testing.T, review ChangeReview) {
 			t.Fatal("private source included")
 		}
 	}
+	// Before could have become After or Added: an ambiguous rename stays removed and added.
 	if statuses["func Before"] != "removed" || statuses["func After"] != "added" || statuses["func main"] != "modified" || statuses["func Added"] != "added" {
 		t.Fatalf("changes: %v", statuses)
 	}
@@ -390,5 +391,65 @@ func assertRemovedAndUnsupportedSignals(t *testing.T, changes map[string]UnitCha
 	}
 	if len(changes["run"].Signals) != 0 || len(changes["func TestShared"].Signals) != 0 {
 		t.Fatalf("shell and test units carry no signals: %#v %#v", changes["run"].Signals, changes["func TestShared"].Signals)
+	}
+}
+
+func TestReviewPairsRenamedAndMovedUnits(t *testing.T) {
+	root := reviewFixture(t)
+	body := "\tx := 1\n\ty := x + 1\n\tprintln(x, y)\n"
+	put(t, root, "a.go", "package main\nfunc Stay(){\n"+body+"}\nfunc Travel(){\n"+body+"\tprintln(3)\n}\nfunc TwinOne(){ println(9) }\nfunc TwinTwo(){ println(9) }\nfunc Edited(){\n"+body+"\tprintln(4)\n\tprintln(5)\n}\n")
+	testGit(t, root, "add", ".")
+	testGit(t, root, "commit", "-m", "Units")
+	put(t, root, "a.go", "package main\nfunc Stay(){\n"+body+"}\nfunc Twin(){ println(9) }\nfunc Reworked(){\n"+body+"\tprintln(4)\n\tprintln(6)\n}\n")
+	put(t, root, "b.go", "package main\nfunc Travel(){\n"+body+"\tprintln(3)\n}\n")
+	idx, err := Scan(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	review, err := NewRepository(idx).Review(context.Background(), "HEAD")
+	if err != nil {
+		t.Fatal(err)
+	}
+	changes := map[string]UnitChange{}
+	for _, change := range review.Changes {
+		changes[change.Node.Name] = change
+	}
+	assertPairedUnits(t, changes)
+}
+
+func assertPairedUnits(t *testing.T, changes map[string]UnitChange) {
+	t.Helper()
+	moved := changes["func Travel"]
+	if moved.Status != "moved" || moved.Node.Path != "b.go" || moved.Before == nil || moved.Before.Path != "a.go" || moved.Added+moved.Removed != 0 {
+		t.Fatalf("moved: %#v", moved)
+	}
+	reworked := changes["func Reworked"]
+	if reworked.Status != "renamed" || reworked.Before.Name != "func Edited" || reworked.Added != 2 || reworked.Removed != 2 || reworked.Hunks[0].Lines[0].Before != reworked.Before.Start {
+		t.Fatalf("renamed with an edit: %#v", reworked)
+	}
+	if changes["func TwinOne"].Status != "removed" || changes["func TwinTwo"].Status != "removed" || changes["func Twin"].Status != "added" {
+		t.Fatalf("ambiguous candidates must not be paired: %v %v %v", changes["func TwinOne"].Status, changes["func TwinTwo"].Status, changes["func Twin"].Status)
+	}
+	if _, listed := changes["func Edited"]; listed {
+		t.Fatal("renamed unit also listed as removed")
+	}
+}
+
+func TestRenameHelpers(t *testing.T) {
+	if got := replaceIdentifier("Old(); OldTimer(); x.Old; _Old", "Old", "New"); got != "New(); OldTimer(); x.New; _Old" {
+		t.Fatal(got)
+	}
+	for name, want := range map[string]string{"func Run": "Run", "method Server.Start": "Start", "resource aws_s3_bucket.logs": "logs", "": ""} {
+		if got := shortName(name); got != want {
+			t.Fatalf("%q: %q", name, got)
+		}
+	}
+	changes := []UnitChange{}
+	for i := 0; i < 70; i++ {
+		node := Node{UnitID: "u", Kind: "function", Name: "func F"}
+		changes = append(changes, UnitChange{Node: node, Status: "removed"}, UnitChange{Node: node, Status: "added"})
+	}
+	if kept, notes := pairRenames(changes, nil, nil); len(kept) != len(changes) || len(notes) != 1 {
+		t.Fatal("unbounded rename comparison")
 	}
 }
