@@ -4,14 +4,13 @@ tlcr is a personal, single-maintainer project. There's no dedicated security tea
 
 ## Supported versions
 
-There are no numbered releases yet — only the tip of `main` is supported. Security fixes land there; build a fresh binary (or download the latest **Test and build** Actions artifact) to pick them up.
+Only the latest release and the tip of `main` are supported. Security fixes land on `main` and ship in the next date-tagged release; download it from the Releases page, or build a fresh binary, to pick them up.
 
 ## Reporting a vulnerability
 
 Please **do not open a public GitHub issue** for a suspected vulnerability.
 
-1. Preferred: use GitHub's private vulnerability reporting for this repo, if enabled — go to the **Security** tab → **Report a vulnerability**.
-2. Otherwise: email **tathagatadg@gmail.com** with a description and, if possible, steps to reproduce.
+Use GitHub's private vulnerability reporting for this repo: go to the **Security** tab → **Report a vulnerability**, and include a description and, if possible, steps to reproduce.
 
 You should get an acknowledgment within a few days. Fixes ship as soon as practical given this is maintained in spare time; there's no guaranteed patch window.
 

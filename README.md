@@ -89,12 +89,12 @@ The binary uses standard Go networking to call the configured provider directly 
 ## Dogfood checks
 
 1. Run it on this repo: open `index.go` and follow parsing functions, then `server.go` and model calls.
-2. Run it on `tathagata/aws`: open `live/shared/prod/main.tf`, inspect the OIDC and IAM blocks, and follow the local module link from `live/blog/dev/main.tf`.
+2. Run it on a Terraform repository: open a root module's `main.tf`, inspect its resource blocks, and follow a local `module` source link to the module it points at.
 3. Explain one small block, refresh without changing it (cache hit), then edit the block and explain again (new call).
 
 ## Product rename and compatibility
 
-The canonical product and executable are now **tlcr**. No legacy CLI alias is installed. The GitHub repository and Go module remain `github.com/tathagata/coderead`; their coordinated rename is explicitly deferred so existing clones and module references continue to work.
+The canonical product and executable are now **tlcr**. No legacy CLI alias is installed. The GitHub repository is now `tathagata/tlcr`; GitHub redirects the old URL, so existing clones keep working. The Go module path remains `github.com/tathagata/coderead`; renaming it is deferred.
 
 Configuration is unchanged: `config.json` beside the executable, or the explicit `--config` path. Provider API-key environment variables are unchanged. There are no product-specific environment variables or browser storage keys to migrate.
 
