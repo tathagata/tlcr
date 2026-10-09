@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -29,17 +30,23 @@ func (b *boundedOutput) Write(p []byte) (int, error) {
 // gitRead invokes fixed read-only operations without shell expansion, optional locks,
 // user Git environment overrides, hooks, external diffs, pagers or signature programs.
 func gitRead(ctx context.Context, root string, stdin io.Reader, args ...string) ([]byte, error) {
+	return gitRun(ctx, root, stdin, 256*1024, 2*time.Second, args...)
+}
+
+// gitRun is gitRead with an explicit output and time bound, for listings and
+// batched object reads that are legitimately larger than one evidence query.
+func gitRun(ctx context.Context, root string, stdin io.Reader, limit int, timeout time.Duration, args ...string) ([]byte, error) {
 	executable, err := exec.LookPath("git")
 	if err != nil {
 		return nil, errors.New("git is unavailable")
 	}
-	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	fixed := make([]string, 0, 13+len(args))
 	fixed = append(fixed, []string{"--no-pager", "--literal-pathspecs", "--no-optional-locks", "-c", "core.fsmonitor=false", "-c", "core.hooksPath=" + os.DevNull, "-c", "core.pager=cat", "-c", "log.showSignature=false", "-C", root}...)
 	command := exec.CommandContext(ctx, executable, append(fixed, args...)...) // #nosec G204 -- executable resolved from user PATH; internal fixed read-only commands and literal pathspecs, never a shell
 	command.Env = []string{"PATH=" + os.Getenv("PATH"), "SYSTEMROOT=" + os.Getenv("SYSTEMROOT"), "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL=" + os.DevNull, "GIT_TERMINAL_PROMPT=0", "GIT_OPTIONAL_LOCKS=0", "LC_ALL=C", "GIT_NO_LAZY_FETCH=1", "GIT_NO_REPLACE_OBJECTS=1"}
-	output := &boundedOutput{limit: 256 * 1024}
+	output := &boundedOutput{limit: limit}
 	command.Stdout = output
 	command.Stderr = io.Discard
 	command.Stdin = stdin
@@ -47,6 +54,67 @@ func gitRead(ctx context.Context, root string, stdin io.Reader, args ...string) 
 		return nil, errors.New("git evidence unavailable (not a repository, timeout, or command failure)")
 	}
 	return output.Bytes(), nil
+}
+
+// readBlobs returns the content of every listed blob that fits the per-file
+// limit, in two processes however many are requested. Oversized and missing
+// objects are simply absent from the result.
+func readBlobs(ctx context.Context, root string, ids []string) (map[string]string, error) {
+	contents := map[string]string{}
+	if len(ids) == 0 {
+		return contents, nil
+	}
+	if len(ids) > 2*maxRepositoryFiles {
+		return nil, failure(TooLarge, errors.New("change needs too many historical files; choose a closer base or smaller root"))
+	}
+	sizes, err := gitRun(ctx, root, strings.NewReader(strings.Join(ids, "\n")+"\n"), 1024*1024, 10*time.Second, "cat-file", "--batch-check")
+	if err != nil {
+		return nil, err
+	}
+	wanted, total := fittingBlobs(string(sizes))
+	if total > maxRepositoryBytes {
+		return nil, failure(TooLarge, errors.New("change needs more than 32 MiB of historical source; choose a closer base or smaller root"))
+	}
+	if len(wanted) == 0 {
+		return contents, nil
+	}
+	data, err := gitRun(ctx, root, strings.NewReader(strings.Join(wanted, "\n")+"\n"), total+256*len(wanted), 10*time.Second, "cat-file", "--batch")
+	if err != nil {
+		return nil, err
+	}
+	for len(data) > 0 {
+		header, rest, ok := bytes.Cut(data, []byte("\n"))
+		fields := strings.Fields(string(header))
+		if !ok || len(fields) != 3 {
+			return nil, errors.New("unexpected git object output")
+		}
+		size, err := strconv.Atoi(fields[2])
+		if err != nil || size < 0 || size >= len(rest) {
+			return nil, errors.New("unexpected git object output")
+		}
+		contents[fields[0]] = string(rest[:size])
+		data = rest[size+1:]
+	}
+	return contents, nil
+}
+
+// fittingBlobs reads `cat-file --batch-check` output and keeps the blobs
+// within the per-file limit, with their combined size.
+func fittingBlobs(sizes string) ([]string, int) {
+	wanted, total := []string{}, 0
+	for _, line := range strings.Split(sizes, "\n") {
+		fields := strings.Fields(line)
+		if len(fields) != 3 || fields[1] != "blob" {
+			continue
+		}
+		size, err := strconv.Atoi(fields[2])
+		if err != nil || size < 0 || size > maxFileBytes {
+			continue
+		}
+		total += size
+		wanted = append(wanted, fields[0])
+	}
+	return wanted, total
 }
 
 // BlobIdentity hashes the current approved bytes for tracked files; it never hashes

@@ -142,3 +142,137 @@ func TestReviewPreservesRelatedTestsAndModuleIdentity(t *testing.T) {
 		t.Fatal("module identity changes must invalidate the snapshot")
 	}
 }
+
+func reviewStatuses(t *testing.T, repo *Repository, selection ChangeSelection) (ChangeReview, map[string]string) {
+	t.Helper()
+	review, err := repo.ReviewChange(context.Background(), selection)
+	if err != nil {
+		t.Fatalf("%+v: %v", selection, err)
+	}
+	statuses := map[string]string{}
+	for _, change := range review.Changes {
+		statuses[change.Node.Name] = change.Status
+	}
+	return review, statuses
+}
+
+func TestReviewSelectsCommitsRangesAndIndex(t *testing.T) {
+	root := reviewFixture(t)
+	first := strings.TrimSpace(testGit(t, root, "rev-parse", "HEAD"))
+	put(t, root, "main.go", "package main\nfunc main(){ Before(); Second() }\nfunc Before(){}\nfunc Second(){}\n")
+	testGit(t, root, "commit", "-am", "Second")
+	put(t, root, "main.go", "package main\nfunc main(){ Before(); Second() }\nfunc Before(){}\nfunc Second(){}\nfunc Third(){}\n")
+	testGit(t, root, "commit", "-am", "Third")
+	put(t, root, "main.go", "package main\nfunc main(){ Before(); Second() }\nfunc Before(){}\nfunc Second(){}\nfunc Third(){}\nfunc Staged(){}\n")
+	testGit(t, root, "add", "main.go")
+	put(t, root, "main.go", "package main\nfunc main(){ Before(); Second() }\nfunc Before(){}\nfunc Second(){}\nfunc Third(){}\nfunc Staged(){}\nfunc Unstaged(){}\n")
+	put(t, root, "untracked.go", "package main\nfunc Untracked(){}\n")
+	idx, err := Scan(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	repo := NewRepository(idx)
+	status := testGit(t, root, "status", "--porcelain=v1")
+	for _, tc := range []struct {
+		name      string
+		selection ChangeSelection
+		added     []string
+		absent    []string
+		live      bool
+	}{
+		{"uncommitted", ChangeSelection{}, []string{"func Staged", "func Unstaged", "func Untracked"}, []string{"func Third"}, true},
+		{"staged", ChangeSelection{Head: SideIndex}, []string{"func Staged"}, []string{"func Unstaged", "func Untracked"}, false},
+		{"unstaged", ChangeSelection{Base: SideIndex}, []string{"func Unstaged", "func Untracked"}, []string{"func Staged"}, true},
+		{"commit", ChangeSelection{Commit: "HEAD~1"}, []string{"func Second"}, []string{"func Third", "func Staged"}, false},
+		{"range", ChangeSelection{Base: first, Head: "HEAD"}, []string{"func Second", "func Third"}, []string{"func Staged"}, false},
+		{"root commit", ChangeSelection{Commit: first}, []string{"func main", "func Before", "func TestMain"}, []string{"func Second"}, false},
+	} {
+		review, statuses := reviewStatuses(t, repo, tc.selection)
+		for _, name := range tc.added {
+			if statuses[name] != "added" {
+				t.Errorf("%s: %s is %q in %v", tc.name, name, statuses[name], statuses)
+			}
+		}
+		for _, name := range tc.absent {
+			if _, ok := statuses[name]; ok {
+				t.Errorf("%s: unexpected %s", tc.name, name)
+			}
+		}
+		if review.Live != tc.live || review.BaseLabel == "" || review.HeadLabel == "" || review.Revision != idx.Revision {
+			t.Errorf("%s: sides %#v", tc.name, review)
+		}
+	}
+	review, statuses := reviewStatuses(t, repo, ChangeSelection{Commit: "HEAD~1"})
+	if statuses["func main"] != "modified" || review.Head != strings.TrimSpace(testGit(t, root, "rev-parse", "HEAD~1")) || review.Base != first {
+		t.Fatalf("commit pair: %v %s %s", statuses, review.Base, review.Head)
+	}
+	if after := testGit(t, root, "status", "--porcelain=v1"); status != after {
+		t.Fatal("review modified Git state")
+	}
+}
+
+func TestReviewMergeUsesFirstParentAndRejectsBadSelections(t *testing.T) {
+	root := reviewFixture(t)
+	trunk := strings.TrimSpace(testGit(t, root, "rev-parse", "--abbrev-ref", "HEAD"))
+	testGit(t, root, "checkout", "-b", "side")
+	put(t, root, "side.go", "package main\nfunc Side(){}\n")
+	testGit(t, root, "add", ".")
+	testGit(t, root, "commit", "-m", "Side")
+	testGit(t, root, "checkout", trunk)
+	put(t, root, "trunk.go", "package main\nfunc Trunk(){}\n")
+	testGit(t, root, "add", ".")
+	testGit(t, root, "commit", "-m", "Trunk")
+	testGit(t, root, "merge", "--no-ff", "-m", "Merge side", "side")
+	idx, err := Scan(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	repo := NewRepository(idx)
+	_, statuses := reviewStatuses(t, repo, ChangeSelection{Commit: "HEAD"})
+	if statuses["func Side"] != "added" || statuses["side.go"] != "file context changed" || len(statuses) != 2 {
+		t.Fatalf("merge against first parent: %v", statuses)
+	}
+	for _, selection := range []ChangeSelection{
+		{Commit: "HEAD", Base: "HEAD~1"},
+		{Commit: SideIndex},
+		{Commit: "--help"},
+		{Base: SideWorktree},
+		{Head: SideEmpty},
+		{Base: "HEAD", Head: "HEAD"},
+		{Base: SideIndex, Head: SideIndex},
+		{Head: "does-not-exist"},
+		{Head: ":other"},
+	} {
+		if _, err := repo.ReviewChange(context.Background(), selection); err == nil {
+			t.Errorf("accepted %+v", selection)
+		}
+	}
+	put(t, root, "trunk.go", "package main\nfunc Trunk(){ println(1) }\n")
+	if _, err := repo.ReviewChange(context.Background(), ChangeSelection{Commit: "HEAD"}); err != nil {
+		t.Fatalf("historical review must not depend on working-tree freshness: %v", err)
+	}
+}
+
+func TestReviewHistoricalSidesHonourExclusionsAndLimits(t *testing.T) {
+	root := reviewFixture(t)
+	put(t, root, "secret.pem", "not a key\n")
+	put(t, root, "vault.yml", "$ANSIBLE_VAULT;1.1;AES256\n6162\n")
+	put(t, root, "big.go", "package main\n// "+strings.Repeat("x", maxFileBytes)+"\n")
+	put(t, root, "gone.go", "package main\nfunc Gone(){}\n")
+	testGit(t, root, "add", "-f", ".")
+	testGit(t, root, "commit", "-m", "Mixed")
+	testGit(t, root, "rm", "-q", "gone.go", "big.go")
+	testGit(t, root, "commit", "-m", "Remove")
+	idx, err := Scan(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	review, statuses := reviewStatuses(t, NewRepository(idx), ChangeSelection{Commit: "HEAD"})
+	if statuses["func Gone"] != "removed" || statuses["gone.go"] != "file context changed" || len(statuses) != 2 || review.Files != 1 {
+		t.Fatalf("exclusions: %v files=%d", statuses, review.Files)
+	}
+	_, statuses = reviewStatuses(t, NewRepository(idx), ChangeSelection{Commit: "HEAD~1"})
+	if statuses["func Gone"] != "added" || len(statuses) != 2 {
+		t.Fatalf("excluded source reviewed: %v", statuses)
+	}
+}

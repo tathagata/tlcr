@@ -226,7 +226,8 @@ func serviceError(w http.ResponseWriter, err error) {
 }
 
 func (a *App) review(w http.ResponseWriter, r *http.Request) {
-	result, err := a.repository.Review(r.Context(), r.URL.Query().Get("base"))
+	query := r.URL.Query()
+	result, err := a.repository.ReviewChange(r.Context(), core.ChangeSelection{Base: query.Get("base"), Head: query.Get("head"), Commit: query.Get("commit")})
 	if err != nil {
 		serviceError(w, err)
 		return
