@@ -12,16 +12,18 @@
 <div id="notice" role="status" aria-live="polite"></div>
 <div class="tour-toolbar">
   <label for="tour-select">Guided reading</label>
-  <select id="tour-select"><option value="architecture">Architecture Tour</option><option value="execution">Execution Flow</option><option value="state">Data &amp; State</option><option value="testing">Testing Strategy</option><option value="recent">Recent Changes</option><option value="changes">Change Tour</option></select>
-  <label id="base-label" hidden>Local base <input id="review-base" value="HEAD" maxlength="256" aria-label="Local Git base"></label>
+  <select id="tour-select"><option value="architecture">Architecture Tour</option><option value="execution">Execution Flow</option><option value="state">Data &amp; State</option><option value="testing">Testing Strategy</option><option value="recent">Recent Changes</option></select>
   <button id="start-tour" class="accent">Start tour</button>
+  <button id="review-open">Review a change</button>
+  <span id="review-summary" hidden></span><button id="review-end" hidden>End review</button>
   <div id="tour-progress" hidden><button id="tour-prev" aria-label="Previous tour stop">←</button><span id="tour-position"></span><button id="tour-next" aria-label="Next tour stop">→</button><button id="pause-tour">Pause</button></div>
   <button id="resume-tour" hidden>Resume tour</button>
   <div class="history"><button id="back" aria-label="Reading history back" disabled>← Back</button><button id="forward" aria-label="Reading history forward" disabled>Forward →</button></div>
 </div>
 <main>
   <aside class="files">
-    <div class="section-head"><h2>Repository</h2><span id="count"></span></div>
+    <div class="section-head"><h2 id="side-title">Repository</h2><span id="count"></span></div>
+    <div id="side-tabs" class="side-tabs" hidden><button id="tab-changes" aria-pressed="true">Changes</button><button id="tab-files" aria-pressed="false">Files</button></div>
     <input id="filter" type="search" placeholder="Find file or symbol /" aria-label="Find file or symbol" autocomplete="off">
     <nav id="file-list" aria-label="Repository files"></nav>
     <div class="side-note">Read-only · local evidence<br>AI is optional and requires approval.</div>
@@ -37,7 +39,8 @@
   </section>
 </main>
 <dialog id="help-dialog"><div class="dialog-head"><h2>Navigate at the speed of reading</h2><button id="close-help" aria-label="Close shortcuts">×</button></div><div id="shortcut-list"></div><p class="muted">Shortcuts are inactive while typing. Browser and system shortcuts are preserved.</p></dialog>
+<dialog id="review-dialog"><div class="dialog-head"><h2>Review a change</h2><button id="close-review" aria-label="Close change picker">×</button></div><input id="review-filter" type="search" placeholder="Filter, or type a revision or A..B" aria-label="Filter changes, or type a revision or range" autocomplete="off" spellcheck="false"><div id="review-list" role="listbox" aria-label="Reviewable changes"></div><p id="review-error" role="alert"></p><button id="review-refresh" hidden>Refresh and review</button><p class="muted">↑ ↓ to move · Enter to review · Esc to close. Local Git only; nothing is fetched.</p></dialog>
 <dialog id="ai-dialog"><div class="dialog-head"><h2>Review the exact AI payload</h2><button id="close-ai" aria-label="Close preview">×</button></div><p id="ai-destination"></p><p class="warning">Approving sends the text below to the configured provider. Source and evidence may contain sensitive information. AI output is interpretation, never a graph fact.</p><textarea id="ai-prompt" readonly aria-label="Exact prompt to be sent"></textarea><p id="ai-error" role="alert"></p><div class="dialog-actions"><button id="cancel-ai">Cancel</button><button id="send-ai" class="accent">Approve and send</button></div></dialog>
-<script src="/markdown.js" defer></script><script src="/highlight.js" defer></script><script src="/app.js" defer></script>
+<script src="/markdown.js" defer></script><script src="/highlight.js" defer></script><script src="/review.js" defer></script><script src="/app.js" defer></script>
 </body>
 </html>
