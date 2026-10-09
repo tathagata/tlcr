@@ -4,14 +4,13 @@ tlcr is a personal, single-maintainer project. There's no dedicated security tea
 
 ## Supported versions
 
-There are no numbered releases yet — only the tip of `main` is supported. Security fixes land there; build a fresh binary (or download the latest **Test and build** Actions artifact) to pick them up.
+Only the latest release and the tip of `main` are supported. Security fixes land on `main` and ship in the next date-tagged release; download it from the Releases page, or build a fresh binary, to pick them up.
 
 ## Reporting a vulnerability
 
 Please **do not open a public GitHub issue** for a suspected vulnerability.
 
-1. Preferred: use GitHub's private vulnerability reporting for this repo, if enabled — go to the **Security** tab → **Report a vulnerability**.
-2. Otherwise: email **tathagatadg@gmail.com** with a description and, if possible, steps to reproduce.
+Use GitHub's private vulnerability reporting for this repo: go to the **Security** tab → **Report a vulnerability**, and include a description and, if possible, steps to reproduce.
 
 You should get an acknowledgment within a few days. Fixes ship as soon as practical given this is maintained in spare time; there's no guaranteed patch window.
 
@@ -50,3 +49,9 @@ Analysis never executes repository source, build commands, parser plugins from t
 The AI preview is the exact bounded payload, including selected evidence. The send endpoint requires both explicit approval and a matching recomputed payload digest. Approved source can contain secrets not covered by exclusion rules; inspect the actual preview. Cached explanations remain local and can themselves be sensitive. No source is stored in browser local storage.
 
 Syntax tokenization runs in a same-origin worker using vendored grammars and a timeout. Source rendering uses text nodes. The UI does not load a CDN, execute document HTML, or render model-provided scripts or images.
+
+## Keeping private information out of this repository
+
+This repository is public, and so is its history: commit messages, pull request descriptions and issue text are as permanent as the code. Contributions must not contain agent session links, references to private repositories, personal contact details, local paths or hostnames, credentials, or real account identifiers. The full list is in [`AGENTS.md`](AGENTS.md) and applies to human and AI contributors alike.
+
+If you find private information that has already been published here, report it through private vulnerability reporting rather than a public issue, so it is not pointed out before it can be dealt with.

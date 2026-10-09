@@ -14,7 +14,7 @@ go build -o tlcr .
 
 This opens a browser bound to `127.0.0.1` on an available port. You can also use `./tlcr --no-browser .` and open the printed URL yourself. Close the process with Ctrl-C.
 
-Release archives are named `tlcr-<platform>-<architecture>.tar.gz` (`.zip` on Windows). Extract the archive to get `tlcr` (`tlcr.exe` on Windows); no executable renaming is needed. Verify the archive against its accompanying SHA-256 checksum. Run `tlcr --version` to check which release you have.
+Release archives are named `tlcr-<platform>-<architecture>.tar.gz` (`.zip` on Windows). Extract the archive to get `tlcr` (`tlcr.exe` on Windows) and its `LICENSE`; no executable renaming is needed. Verify the archive against its accompanying SHA-256 checksum. Run `tlcr --version` to check which release you have.
 
 The structural view needs no model and works without a config file. To enable explanations, copy `config.example.json` to `config.json` **beside the binary**, set `provider` to `openai` or `anthropic`, and set `model` to a model available to your API account. Export the matching `OPENAI_API_KEY` or `ANTHROPIC_API_KEY`. You can instead pass `--config /path/to/config.json`. API access is billed by your provider; a ChatGPT or Claude subscription is not necessarily an API account.
 
@@ -89,12 +89,12 @@ The binary uses standard Go networking to call the configured provider directly 
 ## Dogfood checks
 
 1. Run it on this repo: open `index.go` and follow parsing functions, then `server.go` and model calls.
-2. Run it on `tathagata/aws`: open `live/shared/prod/main.tf`, inspect the OIDC and IAM blocks, and follow the local module link from `live/blog/dev/main.tf`.
+2. Run it on a Terraform repository: open a root module's `main.tf`, inspect its resource blocks, and follow a local `module` source link to the module it points at.
 3. Explain one small block, refresh without changing it (cache hit), then edit the block and explain again (new call).
 
 ## Product rename and compatibility
 
-The canonical product and executable are now **tlcr**. No legacy CLI alias is installed. The GitHub repository and Go module remain `github.com/tathagata/coderead`; their coordinated rename is explicitly deferred so existing clones and module references continue to work.
+The canonical product and executable are now **tlcr**. No legacy CLI alias is installed. The GitHub repository is now `tathagata/tlcr`; GitHub redirects the old URL, so existing clones keep working. The Go module path remains `github.com/tathagata/coderead`; renaming it is deferred.
 
 Configuration is unchanged: `config.json` beside the executable, or the explicit `--config` path. Provider API-key environment variables are unchanged. There are no product-specific environment variables or browser storage keys to migrate.
 
@@ -132,3 +132,7 @@ The optional AI action first shows the exact prompt, provider/model and estimate
 Indexing is bounded to 4,096 recognized files / 32 MiB, 256 KiB per file, 50,000 visited entries and 64 directory levels. Symlinks, nonregular files, ignored paths, known private state and Ansible Vault ciphertext (wholly encrypted files, and YAML files with inline `!vault` values) are omitted. Changes to exclusion rules or module identity invalidate the snapshot. A local change review allows 128 historical blob reads, 4 MiB of returned changed source, 2,000 change entries and a 15-second Git-operation deadline. Large comparisons fail clearly and can be narrowed by choosing a smaller root or closer base. Tours show at most 32 change stops; all detected changes remain in the review result.
 
 Go regression tests run with `make test`; pure-JavaScript highlighting tests run with `make test-ui` (Docker; no npm installation needed). Runtime exploration remains read-only toward the target repository. Explanation cache writes use private temporary files and atomic replacement.
+
+## License
+
+[MIT](LICENSE). Vendored third-party code keeps its own license; see [docs/THIRD_PARTY.md](docs/THIRD_PARTY.md).

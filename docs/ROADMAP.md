@@ -1,6 +1,6 @@
 # tlcr implementation roadmap
 
-Snapshot: 2026-09-16. Covers all 23 open issues (#3–#25) in tathagata/coderead. This is a dependency order, not an assertion that the features are implemented. Work stays read-only toward repositories being analyzed. AI is an optional consumer of the same evidence available to the engineer.
+Snapshot: 2026-09-16. Covers all 23 open issues (#3–#25) in tathagata/tlcr. This is a dependency order, not an assertion that the features are implemented. Work stays read-only toward repositories being analyzed. AI is an optional consumer of the same evidence available to the engineer.
 
 ## Topological order
 
@@ -12,29 +12,29 @@ Dependencies below distinguish implementation prerequisites from chosen sequenci
 
 | Order | Issue | Prerequisites | Deliverable / completion evidence |
 |---|---|---|---|
-| 1 | [#25 Product rename](https://github.com/tathagata/coderead/issues/25) | None; chosen first to stabilize public identity | Canonical executable/UI/releases, documented legacy state behavior, stale-name audit and multi-platform build checks. Repository/module rename explicitly deferred. |
-| 2 | [#21 Reusable core](https://github.com/tathagata/coderead/issues/21) | #25 sequencing | HTTP-independent repository and explanation services; typed errors; unchanged consent/budget/cache behavior tested at adapter boundaries. |
-| 3 | [#22 Comprehension graph](https://github.com/tathagata/coderead/issues/22) | #21 | Start with current Go/Terraform data. Stable unique IDs, provenance, containment/module relationships, neighbor queries and reproducible ranking. No model/network. |
-| 4 | [#3 Structural intelligence](https://github.com/tathagata/coderead/issues/3) | #21, #22 contract | Content-aware parser registry with explicit precedence, normalized relationships and Go cross-file evidence. Optional tools degrade gracefully. |
-| 5 | [#4 Evidence providers](https://github.com/tathagata/coderead/issues/4) | #21, #22 contract | Structured, bounded, provenance-bearing evidence usable by UI and separately approved AI context. Provider errors do not break browsing. |
-| 6 | [#7 Git identity/cache](https://github.com/tathagata/coderead/issues/7) | #21 | Introduce bounded, read-only Git helper. Preserve working-tree changes, prompt/context/model identity and non-Git fallback. See correction below. |
-| 7 | [#10 Git history evidence](https://github.com/tathagata/coderead/issues/10) | #4, shared Git helper from #7 | Local recent commits/churn with source provenance; non-Git/shallow/untracked fixtures; expensive blame loads lazily. |
-| 8 | [#11 ADR/changelog evidence](https://github.com/tathagata/coderead/issues/11) | #4 | Conservative exact references, navigable excerpts and exclusion checks. Documents remain untrusted evidence. |
-| 9 | [#17 Read Next](https://github.com/tathagata/coderead/issues/17) | #22, #3; #4 for evidence destinations | Ranked source destinations with reasons, provenance, reading history and unit-level navigation. |
-| 10 | [#18 Orientation](https://github.com/tathagata/coderead/issues/18) | #3, #4, #17; #10 for history | Repository/file/unit role, boundaries, callers, dependencies, tests, history and next stops without AI. |
-| 11 | [#23 Tours](https://github.com/tathagata/coderead/issues/23) | #22, #17; #10 for Recent Changes | Stable Architecture, Execution, Data/State, Testing and Recent Changes paths when supported by evidence; reasons and exact source per stop; resume/previous/next. Change Tour follows in #20. |
-| 12 | [#24 Keyboard-first UX](https://github.com/tathagata/coderead/issues/24) | #17, #23 | Semantic commands, scoped shortcuts, accurate help, mouse-free 10-stop tour and consent-preserving AI action. |
-| 13 | [#9 Syntax highlighting](https://github.com/tathagata/coderead/issues/9) | None; here by priority | Vendored local assets, safe token rendering and correct multiline highlighting without breaking source ranges. |
-| 14 | [#20 Change comprehension](https://github.com/tathagata/coderead/issues/20) | #3, #4, #17, #22, #23, shared Git helper | Local changed-unit/affected-neighborhood Change Tour first; optional read-only GitHub evidence later with explicit network boundary. |
-| 15 | [#12 Python](https://github.com/tathagata/coderead/issues/12) | #3 | Trustworthy top-level units/decorators and fallback; no invented call graph. Prefer existing parser intelligence to fragile compiler reimplementation. |
-| 16 | [#13 Shell](https://github.com/tathagata/coderead/issues/13) | #3 | Function ranges and shebang detection with quoting/heredoc fixtures; never execute scripts. |
-| 17 | [#16 Kubernetes](https://github.com/tathagata/coderead/issues/16) | #3 | Shared YAML parsing/classification, multi-document provenance and safe template fallback; no cluster access or template execution. |
-| 18 | [#15 Ansible](https://github.com/tathagata/coderead/issues/15) | #3; #16 chosen to establish shared YAML first | Plays/tasks with source ranges; Kubernetes wins unambiguous classification; encrypted Vault content excluded. No playbook execution. |
-| 19 | [#14 C/C++](https://github.com/tathagata/coderead/issues/14) | #3 | Optional bounded ctags integration; fixed arguments; configuration isolation; whole-file fallback without ctags. |
-| 20 | [#19 Findings](https://github.com/tathagata/coderead/issues/19) | #3 and ≥1 of #12–#16; #4 for evidence integration | One language end-to-end, no auto-fixes; explicit opt-in before external tool execution; unavailable/failed analysis distinguished from clean results. |
-| 21 | [#5 Local model](https://github.com/tathagata/coderead/issues/5) | #21; deterministic milestone is a priority gate | Explicit endpoint boundary, fake-server tests, no automatic connection/discovery; no effect on offline comprehension. |
-| 22 | [#6 Session consent](https://github.com/tathagata/coderead/issues/6) | #21; deterministic milestone is a priority gate | Launch-only consent policy, persistent indicator and unchanged default rejection; limits/origin checks remain enforced. |
-| 23 | [#8 AI Markdown](https://github.com/tathagata/coderead/issues/8) | None; optional AI priority gate | Safe formatted interpretation, no raw HTML execution/remote assets and unchanged CSP. |
+| 1 | [#25 Product rename](https://github.com/tathagata/tlcr/issues/25) | None; chosen first to stabilize public identity | Canonical executable/UI/releases, documented legacy state behavior, stale-name audit and multi-platform build checks. Repository/module rename explicitly deferred. |
+| 2 | [#21 Reusable core](https://github.com/tathagata/tlcr/issues/21) | #25 sequencing | HTTP-independent repository and explanation services; typed errors; unchanged consent/budget/cache behavior tested at adapter boundaries. |
+| 3 | [#22 Comprehension graph](https://github.com/tathagata/tlcr/issues/22) | #21 | Start with current Go/Terraform data. Stable unique IDs, provenance, containment/module relationships, neighbor queries and reproducible ranking. No model/network. |
+| 4 | [#3 Structural intelligence](https://github.com/tathagata/tlcr/issues/3) | #21, #22 contract | Content-aware parser registry with explicit precedence, normalized relationships and Go cross-file evidence. Optional tools degrade gracefully. |
+| 5 | [#4 Evidence providers](https://github.com/tathagata/tlcr/issues/4) | #21, #22 contract | Structured, bounded, provenance-bearing evidence usable by UI and separately approved AI context. Provider errors do not break browsing. |
+| 6 | [#7 Git identity/cache](https://github.com/tathagata/tlcr/issues/7) | #21 | Introduce bounded, read-only Git helper. Preserve working-tree changes, prompt/context/model identity and non-Git fallback. See correction below. |
+| 7 | [#10 Git history evidence](https://github.com/tathagata/tlcr/issues/10) | #4, shared Git helper from #7 | Local recent commits/churn with source provenance; non-Git/shallow/untracked fixtures; expensive blame loads lazily. |
+| 8 | [#11 ADR/changelog evidence](https://github.com/tathagata/tlcr/issues/11) | #4 | Conservative exact references, navigable excerpts and exclusion checks. Documents remain untrusted evidence. |
+| 9 | [#17 Read Next](https://github.com/tathagata/tlcr/issues/17) | #22, #3; #4 for evidence destinations | Ranked source destinations with reasons, provenance, reading history and unit-level navigation. |
+| 10 | [#18 Orientation](https://github.com/tathagata/tlcr/issues/18) | #3, #4, #17; #10 for history | Repository/file/unit role, boundaries, callers, dependencies, tests, history and next stops without AI. |
+| 11 | [#23 Tours](https://github.com/tathagata/tlcr/issues/23) | #22, #17; #10 for Recent Changes | Stable Architecture, Execution, Data/State, Testing and Recent Changes paths when supported by evidence; reasons and exact source per stop; resume/previous/next. Change Tour follows in #20. |
+| 12 | [#24 Keyboard-first UX](https://github.com/tathagata/tlcr/issues/24) | #17, #23 | Semantic commands, scoped shortcuts, accurate help, mouse-free 10-stop tour and consent-preserving AI action. |
+| 13 | [#9 Syntax highlighting](https://github.com/tathagata/tlcr/issues/9) | None; here by priority | Vendored local assets, safe token rendering and correct multiline highlighting without breaking source ranges. |
+| 14 | [#20 Change comprehension](https://github.com/tathagata/tlcr/issues/20) | #3, #4, #17, #22, #23, shared Git helper | Local changed-unit/affected-neighborhood Change Tour first; optional read-only GitHub evidence later with explicit network boundary. |
+| 15 | [#12 Python](https://github.com/tathagata/tlcr/issues/12) | #3 | Trustworthy top-level units/decorators and fallback; no invented call graph. Prefer existing parser intelligence to fragile compiler reimplementation. |
+| 16 | [#13 Shell](https://github.com/tathagata/tlcr/issues/13) | #3 | Function ranges and shebang detection with quoting/heredoc fixtures; never execute scripts. |
+| 17 | [#16 Kubernetes](https://github.com/tathagata/tlcr/issues/16) | #3 | Shared YAML parsing/classification, multi-document provenance and safe template fallback; no cluster access or template execution. |
+| 18 | [#15 Ansible](https://github.com/tathagata/tlcr/issues/15) | #3; #16 chosen to establish shared YAML first | Plays/tasks with source ranges; Kubernetes wins unambiguous classification; encrypted Vault content excluded. No playbook execution. |
+| 19 | [#14 C/C++](https://github.com/tathagata/tlcr/issues/14) | #3 | Optional bounded ctags integration; fixed arguments; configuration isolation; whole-file fallback without ctags. |
+| 20 | [#19 Findings](https://github.com/tathagata/tlcr/issues/19) | #3 and ≥1 of #12–#16; #4 for evidence integration | One language end-to-end, no auto-fixes; explicit opt-in before external tool execution; unavailable/failed analysis distinguished from clean results. |
+| 21 | [#5 Local model](https://github.com/tathagata/tlcr/issues/5) | #21; deterministic milestone is a priority gate | Explicit endpoint boundary, fake-server tests, no automatic connection/discovery; no effect on offline comprehension. |
+| 22 | [#6 Session consent](https://github.com/tathagata/tlcr/issues/6) | #21; deterministic milestone is a priority gate | Launch-only consent policy, persistent indicator and unchanged default rejection; limits/origin checks remain enforced. |
+| 23 | [#8 AI Markdown](https://github.com/tathagata/tlcr/issues/8) | None; optional AI priority gate | Safe formatted interpretation, no raw HTML execution/remote assets and unchanged CSP. |
 
 ## Resolve apparent cycles and stale assumptions
 
