@@ -43,7 +43,7 @@ func pairRenames(changes []UnitChange, oldGraph, newGraph *Graph) ([]UnitChange,
 	backward := bestMatches(added, removed, func(a, r int) float64 { return score(r, a) })
 	drop := map[int]bool{}
 	for r, a := range forward {
-		if backward[a] != r {
+		if back, mutual := backward[a]; !mutual || back != r {
 			continue
 		}
 		drop[r] = true
