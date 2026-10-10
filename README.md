@@ -122,6 +122,8 @@ tlcr review --list ./repository                 # what can be reviewed here
 
 ### Reviewing a change
 
+Review mode helps you understand a change, whether you wrote it, an agent wrote it for you, or a colleague sent it. It walks you through what changed in a stable reading order and shows what each change connects to. It runs locally on any commit, branch or uncommitted work, and it has no opinions: no findings, no approvals, no comments posted anywhere. It is for comprehension and sits beside a hosted review rather than replacing it.
+
 Press `c` (or **Review a change**) to pick what to read: uncommitted, staged or unstaged work, a recent commit, or a local or remote-tracking branch against its merge base with the default branch. You can also type any local revision, or a range as `A..B`. Everything comes from local Git objects: nothing is fetched, checked out or written, so to review someone else's branch, fetch it yourself first.
 
 The review is a tour of changed units, ordered contracts first, then implementation, tests and documentation. Each stop shows a unified diff with file line numbers and syntax highlighting (`v` switches to the full source of both sides, `J`/`K` move between hunks). The sidebar lists every changed unit with its `+`/`−` line counts; `x` marks a stop read and `u` jumps to the next unread one. A unit that changes after a refresh is unread again.
