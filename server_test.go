@@ -236,3 +236,75 @@ func committedFixture(t *testing.T) string {
 	}
 	return root
 }
+
+func TestChangeDescriptionNeedsApprovalOfTheExactPayload(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("Git unavailable")
+	}
+	root := committedFixture(t)
+	for _, name := range []string{"XDG_CACHE_HOME", "HOME", "LocalAppData"} {
+		t.Setenv(name, t.TempDir())
+	}
+	t.Setenv("OPENAI_API_KEY", "test-not-a-real-key")
+	put(t, root, "main.go", "package main\nfunc main(){ println(1) }\n")
+	idx, err := core.Scan(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	app := NewApp(idx, Config{Provider: "openai", Model: "fake", MaxInputTokens: 6000, MaxOutputTokens: 300, SessionInputBudget: 12000})
+	old := model.Client
+	t.Cleanup(func() { model.Client = old })
+	calls := 0
+	model.Client = &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		calls++
+		data, _ := io.ReadAll(r.Body)
+		if !bytes.Contains(data, []byte("Give no opinion")) || !bytes.Contains(data, []byte("println(1)")) {
+			t.Fatal("change payload incomplete")
+		}
+		body := `{"output":[{"content":[{"type":"output_text","text":"Now prints 1."}]}],"usage":{"input_tokens":60,"output_tokens":5}}`
+		return &http.Response{StatusCode: 200, Body: io.NopCloser(bytes.NewBufferString(body)), Header: make(http.Header)}, nil
+	})}
+	review, err := app.repository.Review(context.Background(), "HEAD")
+	if err != nil || len(review.Changes) != 1 {
+		t.Fatalf("review: %v", err)
+	}
+	post := func(path string, input ChangeExplainRequest) *httptest.ResponseRecorder {
+		body, _ := json.Marshal(input)
+		req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "http://127.0.0.1:1234"+path, bytes.NewReader(body))
+		req.Header.Set("Origin", "http://127.0.0.1:1234")
+		out := httptest.NewRecorder()
+		app.Routes().ServeHTTP(out, req)
+		return out
+	}
+	input := ChangeExplainRequest{ChangeID: review.Changes[0].ID, Enrich: true}
+	var prepared core.PreparedExplanation
+	if out := post("/api/review/explain/preview", input); out.Code != 200 || json.Unmarshal(out.Body.Bytes(), &prepared) != nil || prepared.Digest == "" {
+		t.Fatalf("preview: %d %s", out.Code, out.Body.String())
+	}
+	assertChangeConsent(t, post, input, prepared.Digest, &calls)
+	put(t, root, "main.go", "package main\nfunc main(){ println(2) }\n")
+	input.Approved, input.Digest = true, prepared.Digest
+	if out := post("/api/review/explain", input); out.Code != 409 || calls != 1 {
+		t.Fatalf("stale source: %d calls=%d", out.Code, calls)
+	}
+}
+
+func assertChangeConsent(t *testing.T, post func(string, ChangeExplainRequest) *httptest.ResponseRecorder, input ChangeExplainRequest, digest string, calls *int) {
+	t.Helper()
+	if out := post("/api/review/explain", input); out.Code != 400 || *calls != 0 {
+		t.Fatalf("unapproved: %d", out.Code)
+	}
+	input.Approved, input.Digest = true, "wrong"
+	if out := post("/api/review/explain", input); out.Code != 409 || *calls != 0 {
+		t.Fatalf("wrong digest: %d", out.Code)
+	}
+	input.Digest = digest
+	out := post("/api/review/explain", input)
+	if out.Code != 200 || *calls != 1 || !strings.Contains(out.Body.String(), "Now prints 1.") {
+		t.Fatalf("approved: %d %s", out.Code, out.Body.String())
+	}
+	input.ChangeID = "0000000000000000"
+	if out := post("/api/review/explain/preview", input); out.Code != 404 {
+		t.Fatalf("unknown change: %d", out.Code)
+	}
+}

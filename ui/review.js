@@ -58,5 +58,37 @@ window.tlcrReview = (() => {
     }
     return -1;
   }
-  return {parseRevision, query, choices, rows, groups, nextUnread};
+  // Read marks and notes are kept per repository in browser storage only.
+  // Storage can be missing, full or hold anything: every failure means "nothing kept".
+  const storageKey = repository => 'tlcr.review.' + repository;
+  function load(storage, repository) {
+    const empty = {read: new Set(), notes: {}};
+    try {
+      const data = JSON.parse(storage.getItem(storageKey(repository)) || 'null');
+      if (!data || typeof data !== 'object') return empty;
+      const read = new Set((Array.isArray(data.read) ? data.read : []).filter(id => typeof id === 'string').slice(-5000)), notes = {};
+      for (const [id, text] of Object.entries(data.notes && typeof data.notes === 'object' ? data.notes : {}).slice(-500)) if (typeof text === 'string' && text) notes[id] = text.slice(0, 4000);
+      return {read, notes};
+    } catch { return empty; }
+  }
+  function save(storage, repository, read, notes) {
+    try { storage.setItem(storageKey(repository), JSON.stringify({read: [...read].slice(-5000), notes})); return true; } catch { return false; }
+  }
+  function clear(storage, repository) { try { storage.removeItem(storageKey(repository)); } catch { /* nothing kept */ } }
+  // A Markdown checklist of the review: what was read, the facts beside each stop, and notes.
+  function summary(review, read, notes) {
+    const done = review.changes.filter(change => read.has(change.id)).length;
+    const lines = [`# Review: ${review.base_label} → ${review.head_label}`, '', `${review.files} files · +${review.added} −${review.removed} · ${done} of ${review.changes.length} stops read`];
+    for (const group of groups(review.changes)) {
+      lines.push('', '## ' + group.cohort.replace(/^\d+ · /, ''));
+      for (const {change} of group.items) {
+        lines.push(`- [${read.has(change.id) ? 'x' : ' '}] \`${change.node.name}\` · ${change.node.path}:${change.node.start} · ${change.status} · +${change.added} −${change.removed}`);
+        for (const signal of change.signals || []) lines.push('  - ' + signal.detail);
+        const note = notes[change.node.id];
+        if (note) lines.push(...note.trim().split('\n').map((text, index) => (index ? '    ' : '  - Note: ') + text));
+      }
+    }
+    return lines.join('\n') + '\n';
+  }
+  return {parseRevision, query, choices, rows, groups, nextUnread, load, save, clear, summary};
 })();

@@ -27,3 +27,29 @@ func TestCanonicalProductSurfaces(t *testing.T) {
 		}
 	}
 }
+
+func TestRepositoryPortIsStableAndFallsBack(t *testing.T) {
+	port := repositoryPort("/some/repository")
+	if port != repositoryPort("/some/repository") || port < 20000 || port >= 40000 || port == repositoryPort("/another/repository") {
+		t.Fatalf("port %d", port)
+	}
+	first, stable, err := listen(t.TempDir() + "/fixed")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = first.Close() }()
+	if !stable {
+		t.Skip("derived port already in use on this machine")
+	}
+	root := t.TempDir()
+	held, stable, err := listen(root)
+	if err != nil || !stable {
+		t.Skipf("derived port unavailable: %v", err)
+	}
+	defer func() { _ = held.Close() }()
+	second, stable, err := listen(root)
+	if err != nil || stable {
+		t.Fatalf("a taken port must fall back: %v stable=%v", err, stable)
+	}
+	_ = second.Close()
+}

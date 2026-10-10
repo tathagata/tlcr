@@ -59,3 +59,37 @@ test('stops group by cohort in order and unread search wraps', () => {
   assert.equal(review.nextUnread(changes, new Set(['a', 'b', 'c']), 0), -1);
   assert.equal(review.nextUnread([], new Set(), 0), -1);
 });
+
+function fakeStorage(initial = {}) {
+  const data = {...initial};
+  return {data, getItem: key => key in data ? data[key] : null, setItem: (key, value) => { data[key] = String(value); }, removeItem: key => { delete data[key]; }};
+}
+
+test('marks and notes round-trip per repository and survive bad storage', () => {
+  const store = fakeStorage();
+  assert.equal(review.save(store, 'repo-a', new Set(['one', 'two']), {'unit:a': 'check the caller'}), true);
+  const kept = review.load(store, 'repo-a');
+  assert.deepEqual([...kept.read], ['one', 'two']);
+  assert.deepEqual(plain(kept.notes), {'unit:a': 'check the caller'});
+  assert.equal(review.load(store, 'repo-b').read.size, 0, 'another repository sees nothing');
+  for (const bad of ['not json', '[]', '{"read":"x","notes":[1]}', '{"read":[1,null,"ok"],"notes":{"a":5,"b":""}}']) {
+    const loaded = review.load(fakeStorage({'tlcr.review.r': bad}), 'r');
+    assert.ok(loaded.read.size <= 1 && Object.keys(loaded.notes).length === 0, bad);
+  }
+  assert.equal(review.load(null, 'r').read.size, 0);
+  assert.equal(review.save(null, 'r', new Set(), {}), false);
+  assert.equal(review.save({setItem() { throw new Error('quota'); }}, 'r', new Set(), {}), false);
+  assert.equal(review.load(fakeStorage({'tlcr.review.r': JSON.stringify({notes: {a: 'x'.repeat(5000)}})}), 'r').notes.a.length, 4000);
+  review.clear(store, 'repo-a'); assert.equal(review.load(store, 'repo-a').read.size, 0); review.clear(null, 'r');
+});
+
+test('summary is a Markdown checklist with signals and notes', () => {
+  const data = {base_label: 'commit abc', head_label: 'indexed working tree', files: 2, added: 5, removed: 1, changes: [
+    {id: '1', cohort: '1 · types and contracts', status: 'modified', added: 4, removed: 1, node: {id: 'unit:a', name: 'type A', path: 'a.go', start: 3}, signals: [{detail: 'No test calls this unit directly'}]},
+    {id: '2', cohort: '3 · tests', status: 'added', added: 1, removed: 0, node: {id: 'unit:t', name: 'func TestA', path: 'a_test.go', start: 9}, signals: []},
+  ]};
+  assert.equal(review.summary(data, new Set(['1']), {'unit:t': 'first line\nsecond line'}), [
+    '# Review: commit abc → indexed working tree', '', '2 files · +5 −1 · 1 of 2 stops read', '',
+    '## types and contracts', '- [x] `type A` · a.go:3 · modified · +4 −1', '  - No test calls this unit directly', '',
+    '## tests', '- [ ] `func TestA` · a_test.go:9 · added · +1 −0', '  - Note: first line', '    second line', ''].join('\n'));
+});

@@ -1,6 +1,6 @@
 'use strict';
 const $ = id => document.getElementById(id);
-const state = { files: [], overview: null, commands: [], path: null, unit: null, source: '', sourceLines: [], highlighted: null, codeWindow: 0, entry: null, orientation: null, sequence: 0, history: [], cursor: -1, tour: null, review: null, selection: null, changes: null, choices: [], choice: 0, pending: null, read: new Set(), sidebar: 'changes', diffMode: true, changeView: null, stop: 0, paused: false, prepared: null, provider: '', model: '', request: null };
+const state = { files: [], overview: null, commands: [], path: null, unit: null, source: '', sourceLines: [], highlighted: null, codeWindow: 0, entry: null, orientation: null, sequence: 0, history: [], cursor: -1, tour: null, review: null, selection: null, changes: null, choices: [], choice: 0, pending: null, repository: null, notes: {}, read: new Set(), sidebar: 'changes', diffMode: true, changeView: null, stop: 0, paused: false, prepared: null, provider: '', model: '', request: null };
 const el = (tag, text, className) => { const n = document.createElement(tag); if (text !== undefined) n.textContent = text; if (className) n.className = className; return n; };
 function notice(text = '') { $('notice').textContent = text; }
 async function request(url, options = {}) {
@@ -17,9 +17,12 @@ function destination(node, reason, p, open = navigate) {
   if (p) button.title = `${p.provider}: ${p.detail} (${sourceLabel(p)})`;
   button.addEventListener('click', () => open(node)); return button;
 }
+function storage() { try { return window.localStorage; } catch { return null; } }
+function persist() { if (!window.tlcrReview.save(storage(), state.repository, state.read, state.notes)) notice('This browser is not keeping review marks and notes; they last until the page closes.'); }
 function card(title, id) { const box = el('div', undefined, 'card'); if (id) box.id = id; box.append(el('h3', title)); return box; }
 async function loadRepository() {
   const [tree, overview, commands] = await Promise.all([request('/api/tree'), request('/api/overview'), request('/api/commands')]);
+  if (tree.repository !== state.repository) { state.repository = tree.repository; const kept = window.tlcrReview.load(storage(), tree.repository); state.read = kept.read; state.notes = kept.notes; }
   state.files = tree.files; state.overview = overview; state.commands = commands; state.provider = tree.provider; state.model = tree.model;
   $('provider').textContent = tree.provider && tree.model ? `AI available · ${tree.provider} / ${tree.model}` : 'Local analysis · AI optional';
   $('budget').textContent = tree.provider ? `${tree.used_input_tokens} / ${tree.session_input_budget} input tokens` : '';
@@ -58,10 +61,19 @@ function renderStops() {
       const read = state.read.has(change.id), button = el('button', undefined, 'file-button stop' + (index === state.stop && state.changeView ? ' active' : '') + (read ? ' read' : ''));
       button.title = `${change.status} · ${change.node.path}:${change.node.start}${read ? ' · read' : ''}`;
       const mark = el('span', read ? '✓' : '·', 'read-mark'); mark.setAttribute('aria-label', read ? 'read' : 'unread');
-      button.append(mark, el('span', change.node.name, 'stop-name'), el('span', `+${change.added} −${change.removed}`, 'delta'));
+      button.append(mark, el('span', change.node.name, 'stop-name'), el('span', `${state.notes[change.node.id] ? '✎ ' : ''}+${change.added} −${change.removed}`, 'delta'));
       button.addEventListener('click', () => visitStop(index)); list.append(button);
     }
   }
+  const tools = el('div', undefined, 'review-tools'), copy = el('button', 'Copy summary'), forget = el('button', 'Clear marks and notes');
+  copy.addEventListener('click', copySummary);
+  // Two clicks instead of a blocking confirmation dialog.
+  forget.addEventListener('click', () => { if (forget.dataset.armed) { state.read = new Set(); state.notes = {}; window.tlcrReview.clear(storage(), state.repository); renderFiles(); updateTour(); const change = currentChange(); if (change) showChange(change); } else { forget.dataset.armed = 'yes'; forget.textContent = 'Click again to clear'; } });
+  tools.append(copy, forget, el('p', 'Marks and notes stay in this browser, for this repository only.', 'review-facts')); list.append(tools);
+}
+async function copySummary() {
+  const text = window.tlcrReview.summary(state.review, state.read, state.notes);
+  try { await navigator.clipboard.writeText(text); notice('Review summary copied as Markdown.'); } catch { notice('The browser refused clipboard access; the summary was not copied.'); }
 }
 function leaveStop() { if (state.tour?.id === 'changes' && state.changeView) state.paused = true; state.changeView = null; }
 function showOverview() {
@@ -285,13 +297,21 @@ function renderChangeContext(change, sequence) {
   if (change.before && (change.status === 'renamed' || change.status === 'moved')) facts.append(el('p',`Was ${change.before.name} · ${change.before.path}:${change.before.start}`,'meta'));
   facts.append(el('p',`${review.base_label} → ${review.head_label}`,'meta'));
   const mark = el('button', state.read.has(change.id) ? 'Mark unread (x)' : 'Mark read (x)'); mark.id = 'mark-read'; mark.addEventListener('click', toggleRead); facts.append(mark);
+  const note = el('textarea'); note.id = 'change-note'; note.maxLength = 4000; note.rows = 3; note.placeholder = 'Note to yourself about this unit'; note.setAttribute('aria-label', 'Note about this unit, kept in this browser only'); note.value = state.notes[change.node.id] || '';
+  note.addEventListener('input', () => { const had = !!state.notes[change.node.id]; if (note.value.trim()) state.notes[change.node.id] = note.value; else delete state.notes[change.node.id]; persist(); if (had !== !!state.notes[change.node.id]) renderFiles(); });
+  facts.append(note);
+  const ai = card('DESCRIBE THIS CHANGE','change-ai'); ai.classList.add('ai-action');
+  ai.append(el('p','Optional AI description of what changed and what it connects to. It gives no opinion, and nothing is sent until you approve the exact text.','muted'));
+  const label = el('label'), facts2 = el('input'); facts2.type = 'checkbox'; facts2.id = 'include-change-facts'; facts2.checked = true; label.append(facts2, document.createTextNode(' Include signals and relationship changes')); ai.append(label);
+  const preview = el('button','Preview AI description (e)'); preview.id = 'preview-change-ai'; preview.disabled = !state.provider || !state.model; preview.addEventListener('click', previewChangeAI); ai.append(preview);
+  if (preview.disabled) ai.append(el('p','No model configured. Everything else here works without one.','meta'));
   const signals = card('AROUND THIS CHANGE','signals');
   for (const signal of change.signals) { signals.append(el('p',signal.detail)); for (const item of signal.related) signals.append(reviewedDestination(item)); }
   if (!change.signals.length) signals.append(el('p','No caller or test signals for this stop.','muted'));
   const relationships = card('RELATIONSHIP CHANGES');
   for (const [label, edges] of [['Added', change.relationships_added],['Removed',change.relationships_removed]]) for (const edge of edges) { relationships.append(el('p',`${label}: ${edge.kind} → ${edge.to}`)); provenance(relationships,edge.provenance); }
   if (!change.relationships_added.length && !change.relationships_removed.length) relationships.append(el('p','No resolved relationship changes for this stop.','muted'));
-  const rest = el('div'); $('detail').replaceChildren(facts,signals,relationships,rest); document.querySelector('.context-body').scrollTop=0;
+  const rest = el('div'); $('detail').replaceChildren(facts,signals,relationships,ai,rest); document.querySelector('.context-body').scrollTop=0;
   if (state.unit) {
     // The head is the working tree and the unit exists: the whole reading toolkit applies.
     rest.append(el('p','Reading local relationships…','muted'));
@@ -308,6 +328,7 @@ function renderChangeContext(change, sequence) {
 function toggleRead() {
   const change = currentChange(); if (!change) { notice('Open a change stop to mark it.'); return; }
   if (!state.read.delete(change.id)) state.read.add(change.id);
+  persist();
   const button = $('mark-read'); if (button) button.textContent = state.read.has(change.id) ? 'Mark unread (x)' : 'Mark read (x)';
   renderFiles(); updateTour();
 }
@@ -345,19 +366,29 @@ async function refresh() {
     }
     state.tour=null; state.paused=false; updateTour(); if (previous && state.files.some(f=>f.path===previous)) await openFile(previous,unit,false); else showOverview(); notice('Local map refreshed.'); } catch(error) {notice(error.message);}
 }
+function showPrepared(prepared, extra) {
+  state.prepared={...prepared,...extra,sequence:state.sequence}; $('ai-destination').textContent=`${prepared.provider} · ${prepared.model} · approximately ${prepared.estimated_tokens} input tokens`;
+  $('ai-prompt').value=prepared.prompt; $('ai-error').textContent=''; $('send-ai').disabled=false; $('ai-dialog').showModal();
+}
 async function previewAI() {
   if (!state.unit || !state.provider || !state.model) return;
-  const sequence=state.sequence, path=state.path, unitID=state.unit.id, enrich=$('include-evidence')?.checked ?? true;
+  const sequence=state.sequence, body={path:state.path,unit_id:state.unit.id,enrich:$('include-evidence')?.checked ?? true};
   const button=$('preview-ai'); if(button)button.disabled=true;
-  try { const prepared=await post('/api/explain/preview',{path,unit_id:unitID,enrich}); if(sequence!==state.sequence)return;
-    state.prepared={...prepared,path,unit_id:unitID,enrich,sequence}; $('ai-destination').textContent=`${prepared.provider} · ${prepared.model} · approximately ${prepared.estimated_tokens} input tokens`;
-    $('ai-prompt').value=prepared.prompt; $('ai-error').textContent=''; $('send-ai').disabled=false; $('ai-dialog').showModal();
-  } catch(error) {notice(error.message);} finally {if(button)button.disabled=false;}
+  try { const prepared=await post('/api/explain/preview',body); if(sequence!==state.sequence)return; showPrepared(prepared,{url:'/api/explain',body,target:'ai-section',heading:'AI INTERPRETATION'}); }
+  catch(error) {notice(error.message);} finally {if(button)button.disabled=false;}
+}
+// Describes the change at the current stop; the server rebuilds the review, so the payload is always current.
+async function previewChangeAI() {
+  const change=currentChange(); if (!change || !state.provider || !state.model) return;
+  const sequence=state.sequence, body={...state.selection,change_id:change.id,enrich:$('include-change-facts')?.checked ?? true};
+  const button=$('preview-change-ai'); if(button)button.disabled=true;
+  try { const prepared=await post('/api/review/explain/preview',body); if(sequence!==state.sequence)return; showPrepared(prepared,{url:'/api/review/explain',body,target:'change-ai',heading:'AI DESCRIPTION OF THIS CHANGE'}); }
+  catch(error) {notice(error.status===404||error.status===409 ? error.message+' Refresh to rebuild the review.' : error.message);} finally {if(button)button.disabled=false;}
 }
 async function sendAI() {
   const prepared=state.prepared; if(!prepared)return; $('send-ai').disabled=true; $('ai-error').textContent='Requesting interpretation…';
-  try { const result=await post('/api/explain',{path:prepared.path,unit_id:prepared.unit_id,enrich:prepared.enrich,digest:prepared.digest,approved:true}); $('ai-dialog').close();
-    if (prepared.sequence===state.sequence && $('ai-section')) { const box=$('ai-section'); box.replaceChildren(el('h3','AI INTERPRETATION'),renderMarkdown(result.text),el('p',result.cached?'Cached interpretation · no model call':`${result.input_tokens} input · ${result.output_tokens} output tokens`,'meta')); }
+  try { const result=await post(prepared.url,{...prepared.body,digest:prepared.digest,approved:true}); $('ai-dialog').close();
+    if (prepared.sequence===state.sequence && $(prepared.target)) { const box=$(prepared.target); box.replaceChildren(el('h3',prepared.heading),el('p','Interpretation by a model, not a source fact.','meta'),renderMarkdown(result.text),el('p',result.cached?'Cached interpretation · no model call':`${result.input_tokens} input · ${result.output_tokens} output tokens`,'meta')); }
     const tree=await request('/api/tree'); $('budget').textContent=`${tree.used_input_tokens} / ${tree.session_input_budget} input tokens`;
   } catch(error) { $('ai-error').textContent=error.message; } finally {$('send-ai').disabled=false;}
 }
@@ -367,7 +398,7 @@ function focusRelationship(kinds) { const target=[...document.querySelectorAll('
 const actions={
  next:()=>state.tour&&!state.paused?visitStop(state.stop+1):state.orientation?.next[0]&&navigate(state.orientation.next[0].node),previous:()=>state.tour&&!state.paused?visitStop(state.stop-1):historyMove(-1),back:()=>historyMove(-1),forward:()=>historyMove(1),search:()=>$('filter').focus(),tour:()=>$('tour-select').focus(),
  'read-next':()=>document.querySelector('#read-next button')?.focus(),tests:()=>focusRelationship(['tested-by','tests']),callers:()=>focusRelationship(['called-by']),dependencies:()=>focusRelationship(['calls','local-module-source','imports']),
- evidence:()=>$('evidence')?.scrollIntoView({block:'start'}),explain:previewAI,review:openReviewPicker,'mark-read':toggleRead,'next-unread':nextUnread,'next-hunk':()=>moveHunk(1),'previous-hunk':()=>moveHunk(-1),'toggle-diff':toggleDiff,resume:()=>state.tour&&visitStop(state.stop),help:()=>$('help-dialog').showModal(),escape:()=>{for(const d of document.querySelectorAll('dialog[open]'))d.close();}
+ evidence:()=>$('evidence')?.scrollIntoView({block:'start'}),explain:()=>currentChange()?previewChangeAI():previewAI(),review:openReviewPicker,'mark-read':toggleRead,'next-unread':nextUnread,'next-hunk':()=>moveHunk(1),'previous-hunk':()=>moveHunk(-1),'toggle-diff':toggleDiff,resume:()=>state.tour&&visitStop(state.stop),help:()=>$('help-dialog').showModal(),escape:()=>{for(const d of document.querySelectorAll('dialog[open]'))d.close();}
 };
 let chord=false, chordTimer;
 document.addEventListener('keydown',event=>{
