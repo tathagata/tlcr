@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/binary"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -12,6 +14,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 
@@ -92,17 +95,38 @@ func main() {
 		log.Fatal(err)
 	}
 	app := NewApp(idx, cfg)
-	listener, err := (&net.ListenConfig{}).Listen(context.Background(), "tcp", "127.0.0.1:0")
+	listener, stable, err := listen(root)
 	if err != nil {
 		log.Fatal(err)
 	}
 	url := "http://" + listener.Addr().String()
 	fmt.Printf("tlcr: %s\nReading: %s\n", url, root)
+	if !stable {
+		fmt.Println("This repository's usual port is in use: review notes and read marks kept by the browser are not available in this session.")
+	}
 	if !*noBrowser {
 		go func() { time.Sleep(250 * time.Millisecond); openBrowser(url) }()
 	}
 	server := &http.Server{Handler: app.Routes(), ReadHeaderTimeout: 10 * time.Second}
 	log.Fatal(server.Serve(listener))
+}
+
+// repositoryPort derives a loopback port from the repository path.
+func repositoryPort(root string) int {
+	sum := sha256.Sum256([]byte(root))
+	return 20000 + int(binary.BigEndian.Uint16(sum[:2]))%20000
+}
+
+// listen prefers the repository's own port so the browser origin, and with it
+// the review notes and read marks the browser stores per origin, is the same
+// every time this repository is opened. A taken port falls back to any free one.
+func listen(root string) (net.Listener, bool, error) {
+	config := &net.ListenConfig{}
+	if listener, err := config.Listen(context.Background(), "tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(repositoryPort(root)))); err == nil {
+		return listener, true, nil
+	}
+	listener, err := config.Listen(context.Background(), "tcp", "127.0.0.1:0")
+	return listener, false, err
 }
 
 func openBrowser(url string) {

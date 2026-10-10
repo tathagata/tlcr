@@ -43,6 +43,8 @@ func (a *App) Routes() http.Handler {
 	mux.HandleFunc("GET /api/tour", a.tour)
 	mux.HandleFunc("GET /api/review", a.review)
 	mux.HandleFunc("GET /api/changes", a.changes)
+	mux.HandleFunc("POST /api/review/explain", a.explainChange)
+	mux.HandleFunc("POST /api/review/explain/preview", a.previewChange)
 	mux.HandleFunc("GET /api/commands", func(w http.ResponseWriter, _ *http.Request) { jsonResponse(w, 200, core.Commands()) })
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		host, port, err := net.SplitHostPort(r.Host)
@@ -79,7 +81,7 @@ func (a *App) tree(w http.ResponseWriter, r *http.Request) {
 		serviceError(w, err)
 		return
 	}
-	jsonResponse(w, 200, map[string]any{"files": idx.Files, "provider": a.cfg.Provider, "model": a.cfg.Model, "used_input_tokens": a.explanations.Used(), "session_input_budget": a.cfg.SessionInputBudget})
+	jsonResponse(w, 200, map[string]any{"files": idx.Files, "repository": core.Hash("repository", idx.Root)[:16], "provider": a.cfg.Provider, "model": a.cfg.Model, "used_input_tokens": a.explanations.Used(), "session_input_budget": a.cfg.SessionInputBudget})
 }
 
 func (a *App) refresh(w http.ResponseWriter, r *http.Request) {
@@ -238,6 +240,65 @@ func (a *App) review(w http.ResponseWriter, r *http.Request) {
 
 func (a *App) changes(w http.ResponseWriter, r *http.Request) {
 	result, err := a.repository.Changes(r.Context())
+	if err != nil {
+		serviceError(w, err)
+		return
+	}
+	jsonResponse(w, 200, result)
+}
+
+// ChangeExplainRequest names one change of a review by its selection and content ID.
+type ChangeExplainRequest struct {
+	core.ChangeSelection
+	ChangeID string `json:"change_id"`
+	Digest   string `json:"digest"`
+	Approved bool   `json:"approved"`
+	Enrich   bool   `json:"enrich"`
+}
+
+// prepareChange recomputes the review so the payload always reflects current local state.
+func (a *App) prepareChange(w http.ResponseWriter, r *http.Request) (ChangeExplainRequest, core.PreparedExplanation, bool) {
+	r.Body = http.MaxBytesReader(w, r.Body, 4096)
+	var input ChangeExplainRequest
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&input); err != nil {
+		errorResponse(w, 400, err)
+		return input, core.PreparedExplanation{}, false
+	}
+	review, err := a.repository.ReviewChange(r.Context(), input.ChangeSelection)
+	if err != nil {
+		serviceError(w, err)
+		return input, core.PreparedExplanation{}, false
+	}
+	prepared, err := a.explanations.PrepareChange(a.repository.Snapshot(), review, input.ChangeID, input.Enrich)
+	if err != nil {
+		serviceError(w, err)
+		return input, core.PreparedExplanation{}, false
+	}
+	return input, prepared, true
+}
+
+func (a *App) previewChange(w http.ResponseWriter, r *http.Request) {
+	if _, prepared, ok := a.prepareChange(w, r); ok {
+		jsonResponse(w, 200, prepared)
+	}
+}
+
+func (a *App) explainChange(w http.ResponseWriter, r *http.Request) {
+	input, prepared, ok := a.prepareChange(w, r)
+	if !ok {
+		return
+	}
+	if !input.Approved {
+		errorResponse(w, 400, errors.New("explicit approval required before sending code to the model"))
+		return
+	}
+	if input.Digest == "" || input.Digest != prepared.Digest {
+		errorResponse(w, 409, errors.New("approved context changed or preview missing; preview again before sending"))
+		return
+	}
+	result, err := a.explanations.Send(r.Context(), prepared)
 	if err != nil {
 		serviceError(w, err)
 		return

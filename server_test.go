@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os/exec"
 	"strings"
 	"testing"
 
@@ -177,5 +178,133 @@ func TestChangedExclusionsPreserveStaleStatus(t *testing.T) {
 		if response.Code != 409 {
 			t.Fatalf("%s: expected stale status, got %d", path, response.Code)
 		}
+	}
+}
+
+func TestReviewAndChangesRoutes(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("Git unavailable")
+	}
+	root := committedFixture(t)
+	put(t, root, "main.go", "package main\nfunc main(){ println(1) }\n")
+	idx, err := core.Scan(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	app := NewApp(idx, Config{})
+	get := func(target string, into any) int {
+		t.Helper()
+		out := httptest.NewRecorder()
+		app.Routes().ServeHTTP(out, httptest.NewRequestWithContext(context.Background(), http.MethodGet, "http://127.0.0.1:1234"+target, nil))
+		if into != nil {
+			if err := json.Unmarshal(out.Body.Bytes(), into); err != nil {
+				t.Fatalf("%s: %v", target, err)
+			}
+		}
+		return out.Code
+	}
+	var list core.ChangeList
+	if code := get("/api/changes", &list); code != 200 || len(list.Working) != 3 || len(list.Commits) != 1 {
+		t.Fatalf("changes: %d %#v", code, list)
+	}
+	assertReviewRoutes(t, get, list.Commits[0].Selection.Commit)
+}
+
+func assertReviewRoutes(t *testing.T, get func(string, any) int, commit string) {
+	t.Helper()
+	var review core.ChangeReview
+	if code := get("/api/review", &review); code != 200 || !review.Live || len(review.Changes) != 1 || review.Changes[0].ID == "" || len(review.Changes[0].Hunks) != 1 {
+		t.Fatalf("uncommitted review: %d %#v", code, review)
+	}
+	if code := get("/api/review?commit="+commit, &review); code != 200 || review.Live || review.Base != core.SideEmpty {
+		t.Fatalf("commit review: %d %#v", code, review)
+	}
+	if a, b, c := get("/api/review?base=%3Aworktree", nil), get("/api/review?commit=HEAD&head=HEAD", nil), get("/api/review?head=--help", nil); a != 400 || b != 400 || c != 400 {
+		t.Fatalf("invalid selections: %d %d %d", a, b, c)
+	}
+}
+
+func committedFixture(t *testing.T) string {
+	t.Helper()
+	root := t.TempDir()
+	put(t, root, "main.go", "package main\nfunc main(){}\n")
+	for _, args := range [][]string{{"init"}, {"add", "."}, {"-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid", "-c", "commit.gpgsign=false", "commit", "-m", "Base"}} {
+		command := exec.CommandContext(context.Background(), "git", append([]string{"-C", root}, args...)...)
+		if output, err := command.CombinedOutput(); err != nil {
+			t.Fatalf("git fixture: %s %v", output, err)
+		}
+	}
+	return root
+}
+
+func TestChangeDescriptionNeedsApprovalOfTheExactPayload(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("Git unavailable")
+	}
+	root := committedFixture(t)
+	for _, name := range []string{"XDG_CACHE_HOME", "HOME", "LocalAppData"} {
+		t.Setenv(name, t.TempDir())
+	}
+	t.Setenv("OPENAI_API_KEY", "test-not-a-real-key")
+	put(t, root, "main.go", "package main\nfunc main(){ println(1) }\n")
+	idx, err := core.Scan(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	app := NewApp(idx, Config{Provider: "openai", Model: "fake", MaxInputTokens: 6000, MaxOutputTokens: 300, SessionInputBudget: 12000})
+	old := model.Client
+	t.Cleanup(func() { model.Client = old })
+	calls := 0
+	model.Client = &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		calls++
+		data, _ := io.ReadAll(r.Body)
+		if !bytes.Contains(data, []byte("Give no opinion")) || !bytes.Contains(data, []byte("println(1)")) {
+			t.Fatal("change payload incomplete")
+		}
+		body := `{"output":[{"content":[{"type":"output_text","text":"Now prints 1."}]}],"usage":{"input_tokens":60,"output_tokens":5}}`
+		return &http.Response{StatusCode: 200, Body: io.NopCloser(bytes.NewBufferString(body)), Header: make(http.Header)}, nil
+	})}
+	review, err := app.repository.Review(context.Background(), "HEAD")
+	if err != nil || len(review.Changes) != 1 {
+		t.Fatalf("review: %v", err)
+	}
+	post := func(path string, input ChangeExplainRequest) *httptest.ResponseRecorder {
+		body, _ := json.Marshal(input)
+		req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "http://127.0.0.1:1234"+path, bytes.NewReader(body))
+		req.Header.Set("Origin", "http://127.0.0.1:1234")
+		out := httptest.NewRecorder()
+		app.Routes().ServeHTTP(out, req)
+		return out
+	}
+	input := ChangeExplainRequest{ChangeID: review.Changes[0].ID, Enrich: true}
+	var prepared core.PreparedExplanation
+	if out := post("/api/review/explain/preview", input); out.Code != 200 || json.Unmarshal(out.Body.Bytes(), &prepared) != nil || prepared.Digest == "" {
+		t.Fatalf("preview: %d %s", out.Code, out.Body.String())
+	}
+	assertChangeConsent(t, post, input, prepared.Digest, &calls)
+	put(t, root, "main.go", "package main\nfunc main(){ println(2) }\n")
+	input.Approved, input.Digest = true, prepared.Digest
+	if out := post("/api/review/explain", input); out.Code != 409 || calls != 1 {
+		t.Fatalf("stale source: %d calls=%d", out.Code, calls)
+	}
+}
+
+func assertChangeConsent(t *testing.T, post func(string, ChangeExplainRequest) *httptest.ResponseRecorder, input ChangeExplainRequest, digest string, calls *int) {
+	t.Helper()
+	if out := post("/api/review/explain", input); out.Code != 400 || *calls != 0 {
+		t.Fatalf("unapproved: %d", out.Code)
+	}
+	input.Approved, input.Digest = true, "wrong"
+	if out := post("/api/review/explain", input); out.Code != 409 || *calls != 0 {
+		t.Fatalf("wrong digest: %d", out.Code)
+	}
+	input.Digest = digest
+	out := post("/api/review/explain", input)
+	if out.Code != 200 || *calls != 1 || !strings.Contains(out.Body.String(), "Now prints 1.") {
+		t.Fatalf("approved: %d %s", out.Code, out.Body.String())
+	}
+	input.ChangeID = "0000000000000000"
+	if out := post("/api/review/explain/preview", input); out.Code != 404 {
+		t.Fatalf("unknown change: %d", out.Code)
 	}
 }

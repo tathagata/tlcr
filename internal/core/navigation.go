@@ -259,5 +259,5 @@ type Command struct {
 
 // Commands lists the supported comprehension actions independently of browser keys.
 func Commands() []Command {
-	return []Command{{"next", "Next tour stop"}, {"previous", "Previous tour stop"}, {"back", "Reading history back"}, {"forward", "Reading history forward"}, {"search", "Find file or symbol"}, {"tour", "Choose tour"}, {"read-next", "Read Next"}, {"tests", "Related tests"}, {"callers", "Callers"}, {"dependencies", "Dependencies"}, {"evidence", "Show evidence"}, {"explain", "Preview AI enrichment"}, {"help", "Keyboard help"}, {"escape", "Close dialog"}}
+	return []Command{{"next", "Next tour stop"}, {"previous", "Previous tour stop"}, {"back", "Reading history back"}, {"forward", "Reading history forward"}, {"search", "Find file or symbol"}, {"tour", "Choose tour"}, {"read-next", "Read Next"}, {"tests", "Related tests"}, {"callers", "Callers"}, {"dependencies", "Dependencies"}, {"evidence", "Show evidence"}, {"explain", "Preview AI enrichment"}, {"review", "Review a change"}, {"mark-read", "Mark change stop read or unread"}, {"next-unread", "Next unread change stop"}, {"next-hunk", "Next hunk"}, {"previous-hunk", "Previous hunk"}, {"toggle-diff", "Diff or full source"}, {"resume", "Return to the tour stop"}, {"help", "Keyboard help"}, {"escape", "Close dialog"}}
 }
