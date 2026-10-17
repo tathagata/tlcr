@@ -49,7 +49,7 @@ func (s *ExplanationService) PrepareChange(idx *Index, review ChangeReview, chan
 	if estimate > s.cfg.MaxInputTokens {
 		return PreparedExplanation{}, failure(TooLarge, fmt.Errorf("estimated %d input tokens exceeds the configured per-request limit", estimate))
 	}
-	return PreparedExplanation{Prompt: text, Digest: Hash(s.cfg.Provider, s.cfg.Model, text), Provider: s.cfg.Provider, Model: s.cfg.Model, EstimatedTokens: estimate, Evidence: EvidenceResult{Items: []Evidence{}, Diagnostics: []Diagnostic{}}, root: idx.Root, key: Hash("change-v1", s.cfg.Provider, s.cfg.Model, text)}, nil
+	return PreparedExplanation{Prompt: text, Digest: Hash(s.cfg.target(), s.cfg.Model, text), Provider: s.cfg.Provider, Destination: s.cfg.Destination(), Model: s.cfg.Model, EstimatedTokens: estimate, Evidence: EvidenceResult{Items: []Evidence{}, Diagnostics: []Diagnostic{}}, root: idx.Root, key: Hash("change-v1", s.cfg.target(), s.cfg.Model, text)}, nil
 }
 
 // changeDiffText renders whole hunks until the limit and counts the rest.

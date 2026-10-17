@@ -20,23 +20,24 @@ In scope — bugs in tlcr itself that would let it do something it isn't suppose
 
 - Path traversal or symlink escapes that let it read files outside the repository root you pointed it at.
 - Anything that lets a remote page or process reach the local HTTP server (CSRF, DNS rebinding, origin-check bypass) or exfiltrate data through it.
-- Prompt-construction or provider-request bugs that send more than the selected, approved code block to a provider.
+- Prompt-construction or provider-request bugs that send anything other than the opened stop's bounded payload to a provider, or that send anything while AI mode is off.
 - Cache-key or config-parsing bugs that leak data across repositories or sessions.
 - Vulnerable dependencies not already caught by `govulncheck` in CI.
 
 Out of scope — this is how the tool is supposed to work, not a vulnerability:
 
 - Reading arbitrary files **within** the repository directory you explicitly launched it on — that's the product.
-- Sending a source block to OpenAI/Anthropic after you've reviewed and approved it — that's opt-in, per-block, using your own API key, and is documented in the README.
-- The target repository containing secrets in source files you choose to approve for explanation — tlcr warns about this; review before approving.
+- Sending the stops you open to the configured model provider while AI mode is on — OpenAI, Anthropic, or the `openai-compatible` endpoint you set in `config.json`. That's opt-in per page session, uses your own API key, names the destination host in a persistent status bar, and is documented in the README. Choosing an endpoint you do not trust is a configuration choice, not a vulnerability.
+- The target repository containing secrets in source files you open with AI mode on — tlcr says what is sent when you turn it on and lists every payload; keep it off for such code.
 - Terraform/IAM/security findings from the *code being read* — tlcr is a structural reader, not a scanner (see README's "Deliberate MVP limits").
 
 ## What's already in place
 
 - The server binds to `127.0.0.1` only and is never exposed beyond localhost.
 - Same-origin enforcement and a restrictive `Content-Security-Policy` on every response (`server.go`).
-- No whole-repository upload and no background model calls; each explanation requires explicit per-block approval.
-- API keys are read only from environment variables; `config.json` is gitignored and must never contain one.
+- No whole-repository upload and no background model calls. AI mode is off by default and per page session; while on, only the stop the reader settles on is sent, every request is listed with its exact text, and reloading turns it off.
+- API keys are read only from environment variables; `config.json` names the variable (`api_key_env`), is gitignored, and must never contain a key.
+- A custom `openai-compatible` endpoint must use `https` (plain `http` only to a server on this machine) and may not carry credentials in the URL. Model requests do not follow redirects, so a request and its key reach only the configured host.
 - File reads resolve symlinks and verify the result stays inside the scanned root before serving it.
 - `govulncheck` and `golangci-lint`'s `gosec` linter run in CI on every push/PR and weekly on a schedule.
 
@@ -46,7 +47,7 @@ Structural browsing, local Git evidence, Tours, and Change Tour require no crede
 
 Analysis never executes repository source, build commands, parser plugins from the repository, or discovered linters. File opens are confined through `os.Root`, reject symlinks and special files, and cap reads. Snapshot invalidation checks prevent newly ignored source from being served through stale navigation. Per-file/aggregate/traversal limits prevent unbounded scans; they are not a sandbox for executing untrusted programs.
 
-The AI preview is the exact bounded payload, including selected evidence. The send endpoint requires both explicit approval and a matching recomputed payload digest. Approved source can contain secrets not covered by exclusion rules; inspect the actual preview. Cached explanations remain local and can themselves be sensitive. No source is stored in browser local storage.
+Every AI request is prepared as an exact bounded payload, including local evidence and the reading brief, and the send endpoint requires a matching recomputed payload digest. In the browser, turning AI mode on is the approval for the stops opened while it stays on; the exact payloads remain inspectable under **What was sent**. Source can contain secrets not covered by exclusion rules; keep AI mode off for it. Cached explanations remain local and can themselves be sensitive. No source is stored in browser local storage.
 
 Syntax tokenization runs in a same-origin worker using vendored grammars and a timeout. Source rendering uses text nodes. The UI does not load a CDN, execute document HTML, or render model-provided scripts or images.
 

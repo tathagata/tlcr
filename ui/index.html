@@ -7,7 +7,7 @@
 <body>
 <header>
   <button class="brand" id="home" title="Repository orientation"><span class="mark">tl</span><span><strong>tlcr</strong><small>Read the system.</small></span></button>
-  <div class="status"><span id="provider">Local analysis · AI optional</span><span id="budget"></span><button id="refresh">↻ Refresh</button><button id="help" aria-label="Keyboard shortcuts">?</button></div>
+  <div class="status"><span id="provider">Local analysis · AI optional</span><button id="ai-toggle" class="ai-toggle" aria-pressed="false" disabled>AI off</button><button id="refresh">↻ Refresh</button><button id="help" aria-label="Keyboard shortcuts">?</button></div>
 </header>
 <div id="notice" role="status" aria-live="polite"></div>
 <div class="tour-toolbar">
@@ -16,31 +16,40 @@
   <button id="start-tour" class="accent">Start tour</button>
   <button id="review-open">Review a change</button>
   <span id="review-summary" hidden></span><button id="review-end" hidden>End review</button>
-  <div id="tour-progress" hidden><button id="tour-prev" aria-label="Previous tour stop">←</button><span id="tour-position"></span><button id="tour-next" aria-label="Next tour stop">→</button><button id="pause-tour">Pause</button></div>
-  <button id="resume-tour" hidden>Resume tour</button>
   <div class="history"><button id="back" aria-label="Reading history back" disabled>← Back</button><button id="forward" aria-label="Reading history forward" disabled>Forward →</button></div>
 </div>
 <main>
   <aside class="files">
     <div class="section-head"><h2 id="side-title">Repository</h2><span id="count"></span></div>
-    <div id="side-tabs" class="side-tabs" hidden><button id="tab-changes" aria-pressed="true">Changes</button><button id="tab-files" aria-pressed="false">Files</button></div>
+    <div id="side-tabs" class="side-tabs" hidden><button id="tab-stops" aria-pressed="true">Tour</button><button id="tab-files" aria-pressed="false">Files</button></div>
     <input id="filter" type="search" placeholder="Find file or symbol /" aria-label="Find file or symbol" autocomplete="off">
     <nav id="file-list" aria-label="Repository files"></nav>
-    <div class="side-note">Read-only toward the repository · local evidence<br>AI is optional and requires approval.</div>
+    <div class="side-note">Read-only toward the repository · local evidence<br>AI stays off unless you turn it on.</div>
   </aside>
   <section class="source-pane">
     <div class="pane-head"><div><h2 id="filename">Repository orientation</h2><small id="filekind">Follow evidence. Build a mental model.</small></div></div>
-    <div id="stop-reason" hidden></div>
+    <div id="units" class="units"></div>
     <div id="code" class="code" tabindex="0" aria-label="Source code"><div class="empty">Indexing local source…</div></div>
   </section>
-  <section class="context-pane" aria-label="Comprehension context">
-    <div class="pane-head"><div><h2>Understand this stop</h2><small id="unitlabel">Facts first. Interpretation optional.</small></div></div>
-    <div class="context-body"><div id="units" class="units"></div><div id="detail"></div></div>
+  <section class="walk-pane" aria-label="Walkthrough">
+    <div class="walk-head"><small id="walk-step"></small><h2 id="walk-title">Repository orientation</h2></div>
+    <div class="walk-body" id="walk-body">
+      <div id="walk-story" class="story" aria-live="polite"></div>
+      <div id="walk-extra"></div>
+      <div id="walk-ai" class="ai-action"></div>
+      <div id="walk-upnext"></div>
+      <details id="walk-details"><summary>Sources and evidence</summary><div id="detail"></div></details>
+    </div>
+    <div class="walk-nav" id="walk-nav">
+      <div id="tour-progress" hidden><div class="progress" aria-hidden="true"><span id="tour-bar"></span></div><span id="tour-position"></span></div>
+      <div class="walk-buttons"><button id="tour-prev" aria-label="Previous stop">← Previous</button><button id="resume-tour" class="accent" hidden>Back to the tour</button><button id="tour-next" class="accent" aria-label="Next stop">Next →</button></div>
+    </div>
   </section>
 </main>
 <dialog id="help-dialog"><div class="dialog-head"><h2>Navigate at the speed of reading</h2><button id="close-help" aria-label="Close shortcuts">×</button></div><div id="shortcut-list"></div><p class="muted">Shortcuts are inactive while typing. Browser and system shortcuts are preserved.</p></dialog>
 <dialog id="review-dialog"><div class="dialog-head"><h2>Review a change</h2><button id="close-review" aria-label="Close change picker">×</button></div><input id="review-filter" type="search" placeholder="Filter, or type a revision or A..B" aria-label="Filter changes, or type a revision or range" autocomplete="off" spellcheck="false"><div id="review-list" role="listbox" aria-label="Reviewable changes"></div><p id="review-error" role="alert"></p><button id="review-refresh" hidden>Refresh and review</button><p class="muted">↑ ↓ to move · Enter to review · Esc to close. Local Git only; nothing is fetched.</p></dialog>
-<dialog id="ai-dialog"><div class="dialog-head"><h2>Review the exact AI payload</h2><button id="close-ai" aria-label="Close preview">×</button></div><p id="ai-destination"></p><p class="warning">Approving sends the text below to the configured provider. Source and evidence may contain sensitive information. AI output is interpretation, never a graph fact.</p><textarea id="ai-prompt" readonly aria-label="Exact prompt to be sent"></textarea><p id="ai-error" role="alert"></p><div class="dialog-actions"><button id="cancel-ai">Cancel</button><button id="send-ai" class="accent">Approve and send</button></div></dialog>
-<script src="/markdown.js" defer></script><script src="/highlight.js" defer></script><script src="/review.js" defer></script><script src="/app.js" defer></script>
+<dialog id="ai-dialog"><div class="dialog-head"><h2>What was sent to the AI</h2><button id="close-ai" aria-label="Close">×</button></div><p class="muted">Every request this session, newest first, with the exact text sent to the provider.</p><div class="ai-log"><div id="ai-log-list" aria-label="Requests"></div><div><p id="ai-destination" class="meta"></p><textarea id="ai-prompt" readonly aria-label="Exact text sent"></textarea></div></div></dialog>
+<footer id="ai-bar" class="ai-bar" aria-label="AI usage" hidden></footer>
+<script src="/markdown.js" defer></script><script src="/highlight.js" defer></script><script src="/review.js" defer></script><script src="/walk.js" defer></script><script src="/app.js" defer></script>
 </body>
 </html>

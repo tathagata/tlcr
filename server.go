@@ -40,6 +40,7 @@ func (a *App) Routes() http.Handler {
 	mux.HandleFunc("GET /api/overview", a.overview)
 	mux.HandleFunc("GET /api/node", a.node)
 	mux.HandleFunc("GET /api/evidence", a.evidence)
+	mux.HandleFunc("GET /api/brief", a.brief)
 	mux.HandleFunc("GET /api/tour", a.tour)
 	mux.HandleFunc("GET /api/review", a.review)
 	mux.HandleFunc("GET /api/changes", a.changes)
@@ -81,7 +82,7 @@ func (a *App) tree(w http.ResponseWriter, r *http.Request) {
 		serviceError(w, err)
 		return
 	}
-	jsonResponse(w, 200, map[string]any{"files": idx.Files, "repository": core.Hash("repository", idx.Root)[:16], "provider": a.cfg.Provider, "model": a.cfg.Model, "used_input_tokens": a.explanations.Used(), "session_input_budget": a.cfg.SessionInputBudget})
+	jsonResponse(w, 200, map[string]any{"files": idx.Files, "repository": core.Hash("repository", idx.Root)[:16], "provider": a.cfg.Provider, "destination": a.cfg.Destination(), "model": a.cfg.Model, "used_input_tokens": a.explanations.Used(), "session_input_budget": a.cfg.SessionInputBudget})
 }
 
 func (a *App) refresh(w http.ResponseWriter, r *http.Request) {
@@ -191,6 +192,14 @@ func (a *App) node(w http.ResponseWriter, r *http.Request) {
 }
 func (a *App) evidence(w http.ResponseWriter, r *http.Request) {
 	result, err := a.repository.Evidence(r.Context(), r.URL.Query().Get("id"))
+	if err != nil {
+		serviceError(w, err)
+		return
+	}
+	jsonResponse(w, 200, result)
+}
+func (a *App) brief(w http.ResponseWriter, r *http.Request) {
+	result, err := a.repository.Brief(r.Context(), r.URL.Query().Get("id"))
 	if err != nil {
 		serviceError(w, err)
 		return

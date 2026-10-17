@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/tathagata/coderead/internal/core"
+	"github.com/tathagata/coderead/internal/model"
 )
 
 // version is set at build time via -ldflags "-X main.version=...";
@@ -49,8 +50,8 @@ func loadConfig(path string) (Config, error) {
 	if c.MaxInputTokens < 500 || c.MaxInputTokens > 50000 || c.MaxOutputTokens < 100 || c.MaxOutputTokens > 10000 || c.SessionInputBudget < c.MaxInputTokens {
 		return c, fmt.Errorf("invalid token limits in %s", path)
 	}
-	if c.Provider != "" && c.Provider != "openai" && c.Provider != "anthropic" {
-		return c, fmt.Errorf("provider must be openai or anthropic")
+	if err := model.Validate(c); err != nil {
+		return c, fmt.Errorf("config %s: %w", path, err)
 	}
 	return c, nil
 }
