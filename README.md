@@ -1,6 +1,6 @@
 # tlcr
 
-A local, read-only code reader with source-backed orientation, relationships, evidence and guided Tours. The CLI and browser UI ship in one Go binary and work without AI or an account. Terraform/HCL, Go, Python, shell scripts and Ansible playbooks/task lists are parsed structurally; frontend assets, other YAML and documents are readable as files. Optional AI enrichment uses an exact-payload preview and explicit approval.
+A local, read-only code reader with source-backed orientation, relationships, evidence and guided Tours. The CLI and browser UI ship in one Go binary and work without AI or an account. Terraform/HCL, Go, Python, shell scripts and Ansible playbooks/task lists are parsed structurally; frontend assets, other YAML and documents are readable as files. Optional AI is off until you turn it on for the session; a status bar then shows every request and what it used, and the exact text of each is one click away.
 
 ## Quick start
 
@@ -16,9 +16,36 @@ This opens a browser bound to `127.0.0.1` on an available port. You can also use
 
 Release archives are named `tlcr-<platform>-<architecture>.tar.gz` (`.zip` on Windows). Extract the archive to get `tlcr` (`tlcr.exe` on Windows) and its `LICENSE`; no executable renaming is needed. Verify the archive against its accompanying SHA-256 checksum. Run `tlcr --version` to check which release you have.
 
-The structural view needs no model and works without a config file. To enable explanations, copy `config.example.json` to `config.json` **beside the binary**, set `provider` to `openai` or `anthropic`, and set `model` to a model available to your API account. Export the matching `OPENAI_API_KEY` or `ANTHROPIC_API_KEY`. You can instead pass `--config /path/to/config.json`. API access is billed by your provider; a ChatGPT or Claude subscription is not necessarily an API account.
+The structural view needs no model and works without a config file. To enable explanations, copy `config.example.json` to `config.json` **beside the binary**, set `provider` to `openai`, `anthropic` or `openai-compatible` (below), and set `model` to a model available to your API account. Export the matching `OPENAI_API_KEY` or `ANTHROPIC_API_KEY`. You can instead pass `--config /path/to/config.json`. API access is billed by your provider; a ChatGPT or Claude subscription is not necessarily an API account.
 
-`config.json` is intentionally gitignored; do not put API keys in it. The example leaves `model` blank so you choose an available model deliberately. The UI asks for confirmation each time before sending the highlighted block. No entire-repository upload or background generation occurs. The token limits are **estimates and safeguards**, not a guaranteed billing cap; provider-reported usage is shown after each call.
+#### Other OpenAI-compatible endpoints
+
+`openai-compatible` sends requests to an endpoint you choose, such as Azure OpenAI, GitHub Models, or a model server on your own machine. Set:
+
+- `endpoint`: the full URL of the API call. It must use `https`; plain `http` is accepted only for a server on this machine.
+- `api`: `chat` (Chat Completions, the default) or `responses` (the Responses API).
+- `auth`: `bearer` (`Authorization: Bearer`, the default) or `api-key` (an `api-key` header, as Azure uses).
+- `api_key_env`: the name of the environment variable that holds the key. Leave it out for a local server that needs none.
+
+Requests do not follow redirects, and the status bar names the host they go to. Examples, with placeholders to replace:
+
+```json
+{ "provider": "openai-compatible", "endpoint": "https://YOUR-RESOURCE.openai.azure.com/openai/v1/responses",
+  "api": "responses", "auth": "api-key", "api_key_env": "AZURE_OPENAI_API_KEY", "model": "YOUR-DEPLOYMENT-NAME" }
+```
+
+```json
+{ "provider": "openai-compatible", "endpoint": "https://models.github.ai/inference/chat/completions",
+  "api_key_env": "GITHUB_MODELS_TOKEN", "model": "openai/gpt-4.1" }
+```
+
+```json
+{ "provider": "openai-compatible", "endpoint": "http://127.0.0.1:11434/v1/chat/completions", "model": "YOUR-LOCAL-MODEL" }
+```
+
+For Azure OpenAI, `model` is your deployment name, and the resource must offer the `/openai/v1/` API. For GitHub Models, the token is a GitHub personal access token with the `models:read` permission; GitHub's rate limits and billing apply. A GitHub Copilot subscription does not provide an API for other applications, so tlcr cannot use one directly. Chat requests set `max_completion_tokens`; a server that does not recognize it may ignore the output limit.
+
+`config.json` is intentionally gitignored; do not put API keys in it. The example leaves `model` blank so you choose an available model deliberately. AI stays off until you switch it on with **AI off/on** in the header, and switching it on is the consent for that page session. While it is on, the code and reading brief of the stop you settle on are sent, one request per stop; stepping quickly past stops sends nothing for them, and there is no whole-repository upload or background generation. Reloading the page turns it off again. The token limits are **estimates and safeguards**, not a guaranteed billing cap; provider-reported usage is shown in the status bar after each call.
 
 ## Building with Docker
 
@@ -78,11 +105,11 @@ There's no semantic versioning here — the date-based tag just marks when a bui
 - Navigate Go functions, methods and types; view HTML, JS, TS and CSS files as whole-file units.
 - Generate explanations only for selected source blocks. A local module's block names are included as a compact context hint.
 - Cache explanations in the user cache directory, keyed by source, context, provider, model and prompt version. Reopening unchanged code uses no model tokens.
-- Exclude `.terraform`, `.git`, dependency directories, state/plan files, `.tfvars`, config and `.env` from indexing, on top of respecting the repository's own `.gitignore` files (root and nested, including negation) — so build artifacts, `node_modules`, compiled binaries, and anything else a project already ignores don't clutter the browser. Source files can still contain secrets: review highlighted code before approving any send.
+- Exclude `.terraform`, `.git`, dependency directories, state/plan files, `.tfvars`, config and `.env` from indexing, on top of respecting the repository's own `.gitignore` files (root and nested, including negation) — so build artifacts, `node_modules`, compiled binaries, and anything else a project already ignores don't clutter the browser. Source files can still contain secrets: keep AI off while reading code that may contain them.
 
 ## Deliberate MVP limits
 
-This is a source reader, not a Terraform plan, IAM policy evaluator, complete call graph or security scanner. It does not run Terraform, edit the target repository, or evaluate variables. For unsupported languages, structural navigation is at file level. `.gitignore` matching covers the common syntax (negation, anchoring, directory-only patterns, `**`) via a small dependency-free matcher, not a byte-for-byte reimplementation of git's own wildmatch — very unusual patterns may match slightly differently than `git check-ignore` would. As in git itself, a pattern inside an already-ignored directory's own `.gitignore` cannot re-include files there (`vendor/` at the root always wins, however `vendor/keep/.gitignore` is written). Files a `.gitignore` doesn't cover can still contain secrets: review highlighted code before approving any send.
+This is a source reader, not a Terraform plan, IAM policy evaluator, complete call graph or security scanner. It does not run Terraform, edit the target repository, or evaluate variables. For unsupported languages, structural navigation is at file level. `.gitignore` matching covers the common syntax (negation, anchoring, directory-only patterns, `**`) via a small dependency-free matcher, not a byte-for-byte reimplementation of git's own wildmatch — very unusual patterns may match slightly differently than `git check-ignore` would. As in git itself, a pattern inside an already-ignored directory's own `.gitignore` cannot re-include files there (`vendor/` at the root always wins, however `vendor/keep/.gitignore` is written). Files a `.gitignore` doesn't cover can still contain secrets: keep AI off while reading code that may contain them.
 
 The binary uses standard Go networking to call the configured provider directly over HTTPS. It does not bundle model weights. The sidecar config is JSON. Local browser assets are embedded at build time.
 
@@ -106,7 +133,9 @@ See [the implementation roadmap](docs/ROADMAP.md) for the dependency-ordered pat
 
 Opening a repository now starts with a deterministic orientation: ranked entry points, source-backed roles, callers, local dependencies, and direct test relationships. Read Next links every recommendation to its source provenance. Git history and exact ADR/changelog references are local evidence; unavailable Git does not prevent browsing.
 
-Choose Architecture, Execution Flow, Data & State, Testing Strategy, or Recent Changes from the Tour menu, or review a change (below). Use `n`/`p` for next/previous, `[`/`]` for reading history, `/` to find files or symbols, and `?` for the complete keyboard map. Tours can be paused and resumed in the same page. Refresh explicitly rebuilds the snapshot after edits; navigation does not rescan the repository.
+Each stop also has a **reading brief**: what is known locally about the unit, with every fact rated by how far it can be trusted. Relationships come from the current source. Tests that call the unit are read by name and named subtests (tlcr does not run them). History is the commits that changed the unit's own lines, found with `git log -L` from where the unit sits in `HEAD`, so uncommitted edits above it do not hide it; the brief says when the unit itself has uncommitted changes. The comment directly above the unit comes last, with its age from `git blame`: if the code under it changed after the comment was written, the walkthrough says the comment may be out of date. `GET /api/brief?id=` returns the brief as JSON.
+
+Choose Architecture, Execution Flow, Data & State, Testing Strategy, or Recent Changes from the Tour menu, or review a change (below). A tour is a walkthrough: the code is on the left and, beside it, a plain-language account of what the stop is, why the tour came here and what comes next, built from the same source facts. **Next** and **Previous** step through it, and the sidebar outlines the tour as chapters (where it starts, then what each unit uses). Provenance, ranking and evidence are under **Sources and evidence** at each stop. The Files tab groups files by directory. Following a link in the narration leaves the tour; **Back to stop N** (`b`) returns to it. Use `n`/`p` for next/previous, `[`/`]` for reading history, `/` to find files or symbols, and `?` for the complete keyboard map. Refresh explicitly rebuilds the snapshot after edits; navigation does not rescan the repository.
 
 The same core is available without the browser:
 
@@ -126,13 +155,13 @@ Review mode helps you understand a change, whether you wrote it, an agent wrote 
 
 Press `c` (or **Review a change**) to pick what to read: uncommitted, staged or unstaged work, a recent commit, or a local or remote-tracking branch against its merge base with the default branch. You can also type any local revision, or a range as `A..B`. Everything comes from local Git objects: nothing is fetched, checked out or written, so to review someone else's branch, fetch it yourself first.
 
-The review is a tour of changed units, ordered contracts first, then implementation, tests and documentation. Each stop shows a unified diff with file line numbers and syntax highlighting (`v` switches to the full source of both sides, `J`/`K` move between hunks). The sidebar lists every changed unit with its `+`/`−` line counts; `x` marks a stop read and `u` jumps to the next unread one. A unit that changes after a refresh is unread again.
+The review is a tour of changed units, ordered contracts first, then implementation, tests and documentation. Each stop shows a unified diff with file line numbers and syntax highlighting (`v` switches to the full source of both sides, `J`/`K` move between hunks). The sidebar lists every changed unit with its `+`/`−` line counts, in chapters by cohort; **Next** marks the stop you leave read, `x` toggles the mark and `u` jumps to the next unread stop. A unit that changes after a refresh is unread again.
 
-Beside the diff are facts the diff does not show, each with its source: callers that were not changed, directly related tests that did or did not change with the unit, and relationships added or removed. When the head is your working tree, the usual Read Next, callers (`g c`), tests (`g t`), local evidence and optional AI enrichment are available at the stop. Following one pauses the tour and `b` returns to the stop. For a historical head these relationships come from the reviewed snapshot, and a link says so when current source differs.
+Beside the diff, the walkthrough says what changed and what the diff does not show: callers that were not changed, directly related tests that did or did not change with the unit, and relationships added or removed. Each fact's source is under **Sources and evidence**. When the head is your working tree, the usual Read Next, callers (`g c`), tests (`g t`), local evidence and optional AI enrichment are available at the stop. Following one pauses the tour and `b` returns to the stop. For a historical head these relationships come from the reviewed snapshot, and a link says so when current source differs.
 
 Each stop has a note field, and **Copy summary** puts a Markdown checklist of the review (read marks, signals and notes) on the clipboard. Read marks and notes are kept in this browser's storage for this repository only: never in the repository, never sent anywhere, and removable with **Clear marks and notes**. So that the browser recognises the repository next time, tlcr serves each repository on a loopback port derived from its path; if that port is busy it uses another and says that earlier marks and notes are unavailable for that session.
 
-With a model configured, `e` at a change stop previews an AI description of the change: what changed and what it connects to, with no opinion, suggestions or risk list. It uses the same consent as unit explanations: you see the exact text, approval is bound to it, and the payload is rebuilt from current local state before sending. Large diffs include whole hunks up to a size limit and state how many were left out.
+With AI on, each change stop gets an AI description of the change: what changed and what it connects to, with no opinion, suggestions or risk list. The payload is rebuilt from current local state before sending, and appears under **What was sent** like any other request. Large diffs include whole hunks up to a size limit and state how many were left out.
 
 A removed and an added unit are shown as renamed or moved only when each is the other's single closest match; otherwise they stay removed and added. Caller and test signals come from direct, statically resolved Go calls only, so other languages show none rather than a misleading "no callers". Text outside parsed units gets a file-context stop. Standard Go generated files are collapsed when both versions carry the generated-code marker. `--json` includes both sources, hunks, signals, relationship changes and the ordered tour. GitHub review comments are not integrated.
 
@@ -140,9 +169,9 @@ Go and Terraform have structural units and local relationships. Python has one u
 
 Source highlighting is fully embedded and works offline for Go, HCL, Python, shell, YAML, JS/TS, JSX/TSX, HTML and CSS. Unsupported kinds remain plain text. Tokenization runs in a local worker with a timeout, preserves multiline tokens, and never inserts source as HTML. Files longer than 2,000 lines have explicit earlier/later navigation. See [vendored dependency details](docs/THIRD_PARTY.md).
 
-### Explicit AI enrichment
+### Optional AI mode
 
-The optional AI action first shows the exact prompt, provider/model and estimated input size. You can choose whether to include bounded local evidence. Approval is bound to the payload digest; source or evidence changes require a new preview. AI output stays separate from source facts. Model output is rendered with a small text-node Markdown renderer; raw HTML, images and executable links are not enabled.
+With a model configured, **AI off** in the header becomes a toggle. Turning it on puts a status bar along the bottom of the page for as long as it stays on: provider and model, requests sent and served from cache, input tokens used against the session budget, output tokens, the last request and what is happening now. Each stop you settle on is explained by the model from its source, local evidence and its reading brief, as JSON with each fact's reliability, so the model is told which statements are current, which come from tests or dated history, and which comments may be stale. **What was sent** in the status bar lists this session's requests with the exact text of each. `e` asks again for the current stop. The server still binds every send to a digest of a freshly prepared payload, so edited source is never sent under an older preview. AI output stays separate from source facts. Model output is rendered with a small text-node Markdown renderer; raw HTML, images and executable links are not enabled.
 
 ### Analysis limits
 

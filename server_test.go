@@ -96,6 +96,98 @@ func TestAnthropicAdapter(t *testing.T) {
 	}
 }
 
+func TestOpenAICompatibleAdapter(t *testing.T) {
+	t.Setenv("EXAMPLE_MODEL_KEY", "test-not-a-real-key")
+	old := model.Client
+	t.Cleanup(func() { model.Client = old })
+	var seen *http.Request
+	var body map[string]any
+	reply := `{"choices":[{"message":{"content":"Reads the source."}}],"usage":{"prompt_tokens":30,"completion_tokens":6}}`
+	model.Client = &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		seen = r
+		body = map[string]any{}
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		return &http.Response{StatusCode: 200, Body: io.NopCloser(bytes.NewBufferString(reply)), Header: make(http.Header)}, nil
+	})}
+	chat := Config{Provider: "openai-compatible", Endpoint: "https://models.example.com/inference/chat/completions", APIKeyEnv: "EXAMPLE_MODEL_KEY", Model: "vendor/test-model", MaxOutputTokens: 300}
+	result, err := model.Call(context.Background(), chat, "explain source")
+	if err != nil || result.Text != "Reads the source." || result.InputTokens != 30 || result.OutputTokens != 6 {
+		t.Fatalf("chat result: %#v %v", result, err)
+	}
+	if seen.URL.String() != chat.Endpoint || seen.Header.Get("Authorization") != "Bearer test-not-a-real-key" || body["model"] != "vendor/test-model" || body["max_completion_tokens"] != float64(300) {
+		t.Fatalf("chat request: %v %v %v", seen.URL, seen.Header, body)
+	}
+	t.Setenv("EXAMPLE_MODEL_KEY", "")
+	if _, err := model.Call(context.Background(), chat, "explain source"); err == nil || !strings.Contains(err.Error(), "EXAMPLE_MODEL_KEY") {
+		t.Fatalf("missing key: %v", err)
+	}
+}
+
+// Azure-style: the Responses format, with the key in an api-key header.
+func TestOpenAICompatibleResponsesAndLocal(t *testing.T) {
+	t.Setenv("EXAMPLE_MODEL_KEY", "test-not-a-real-key")
+	old := model.Client
+	t.Cleanup(func() { model.Client = old })
+	var seen *http.Request
+	var body map[string]any
+	reply := `{"output":[{"content":[{"type":"output_text","text":"Reads the source."}]}],"usage":{"input_tokens":30,"output_tokens":6}}`
+	model.Client = &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		seen = r
+		body = map[string]any{}
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		return &http.Response{StatusCode: 200, Body: io.NopCloser(bytes.NewBufferString(reply)), Header: make(http.Header)}, nil
+	})}
+	azure := Config{Provider: "openai-compatible", Endpoint: "https://resource.example.com/openai/v1/responses", API: "responses", Auth: "api-key", APIKeyEnv: "EXAMPLE_MODEL_KEY", Model: "deployment", MaxOutputTokens: 300}
+	if result, err := model.Call(context.Background(), azure, "explain source"); err != nil || result.Text != "Reads the source." {
+		t.Fatalf("responses result: %#v %v", result, err)
+	}
+	if seen.Header.Get("api-key") != "test-not-a-real-key" || seen.Header.Get("Authorization") != "" || body["input"] != "explain source" || azure.Destination() != "resource.example.com" {
+		t.Fatalf("responses request: %v %v", seen.Header, body)
+	}
+	// A local server needs no key.
+	local := Config{Provider: "openai-compatible", Endpoint: "http://127.0.0.1:11434/v1/chat/completions", Model: "local", MaxOutputTokens: 300}
+	reply = `{"choices":[{"message":{"content":"Reads the source."}}]}`
+	if _, err := model.Call(context.Background(), local, "explain source"); err != nil || seen.Header.Get("Authorization") != "" {
+		t.Fatalf("local request: %v %v", err, seen.Header)
+	}
+}
+
+func TestOpenAICompatibleConfigIsChecked(t *testing.T) {
+	good := Config{Provider: "openai-compatible", Endpoint: "https://resource.example.com/openai/v1/responses", API: "responses", Auth: "api-key", APIKeyEnv: "AZURE_OPENAI_API_KEY"}
+	if err := model.Validate(good); err != nil {
+		t.Fatal(err)
+	}
+	for name, bad := range map[string]Config{
+		"plain http to another host": {Provider: "openai-compatible", Endpoint: "http://models.example.com/v1/chat/completions"},
+		"no endpoint":                {Provider: "openai-compatible"},
+		"credentials in the URL":     {Provider: "openai-compatible", Endpoint: "https://user:secret@models.example.com/v1"},
+		"unknown format":             {Provider: "openai-compatible", Endpoint: "https://models.example.com/v1", API: "completions"},
+		"unknown auth":               {Provider: "openai-compatible", Endpoint: "https://models.example.com/v1", Auth: "basic"},
+		"key value, not a name":      {Provider: "openai-compatible", Endpoint: "https://models.example.com/v1", APIKeyEnv: "test-not-a-real-key"},
+		"endpoint on openai":         {Provider: "openai", Endpoint: "https://models.example.com/v1"},
+		"unknown provider":           {Provider: "azure"},
+	} {
+		if model.Validate(bad) == nil {
+			t.Errorf("%s: accepted", name)
+		}
+	}
+}
+
+func TestModelRequestsDoNotFollowRedirects(t *testing.T) {
+	t.Setenv("EXAMPLE_MODEL_KEY", "test-not-a-real-key")
+	other := 0
+	elsewhere := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { other++ }))
+	defer elsewhere.Close()
+	redirect := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, elsewhere.URL, http.StatusTemporaryRedirect)
+	}))
+	defer redirect.Close()
+	cfg := Config{Provider: "openai-compatible", Endpoint: redirect.URL + "/v1/chat/completions", Auth: "api-key", APIKeyEnv: "EXAMPLE_MODEL_KEY", Model: "local", MaxOutputTokens: 300}
+	if _, err := model.Call(context.Background(), cfg, "explain source"); err == nil || !strings.Contains(err.Error(), "HTTP 307") || other != 0 {
+		t.Fatalf("redirect followed: %v, %d requests elsewhere", err, other)
+	}
+}
+
 func TestExactPreviewAndStructuralEndpoints(t *testing.T) {
 	root := t.TempDir()
 	put(t, root, "app.go", "package app\nfunc Work(){}\n")
@@ -124,6 +216,10 @@ func TestExactPreviewAndStructuralEndpoints(t *testing.T) {
 	var prepared core.PreparedExplanation
 	if err := json.Unmarshal(preview.Body.Bytes(), &prepared); err != nil || prepared.Digest == "" {
 		t.Fatalf("preview: %s", preview.Body.String())
+	}
+	// The approved payload carries the reading brief, so the model sees what the reader sees.
+	if !strings.Contains(prepared.Prompt, "Reading brief (JSON") || !strings.Contains(prepared.Prompt, `"unit":"func Work"`) {
+		t.Fatalf("enriched prompt lacks the reading brief:\n%s", prepared.Prompt)
 	}
 	put(t, root, "app.go", "package app\nfunc Work(){println(\"changed\")}\n")
 	body, _ := json.Marshal(ExplainRequest{Path: "app.go", UnitID: "app.go:func Work", Approved: true, Digest: prepared.Digest})
