@@ -16,6 +16,14 @@ This opens a browser bound to `127.0.0.1` on an available port. You can also use
 
 Release archives are named `tlcr-<platform>-<architecture>.tar.gz` (`.zip` on Windows). Extract the archive to get `tlcr` (`tlcr.exe` on Windows) and its `LICENSE`; no executable renaming is needed. Verify the archive against its accompanying SHA-256 checksum. Run `tlcr --version` to check which release you have.
 
+On macOS, Gatekeeper may refuse to run a `tlcr` downloaded from the internet. Once the checksum matches, remove the quarantine attribute from the extracted binary:
+
+```sh
+xattr -d com.apple.quarantine ./tlcr
+```
+
+This skips macOS's check for downloaded files, so run it only on a binary you have verified. Alternatively, try to run `tlcr` once, then choose **Open Anyway** in System Settings → Privacy & Security.
+
 The structural view needs no model and works without a config file. To enable explanations, copy `config.example.json` to `config.json` **beside the binary**, set `provider` to `openai`, `anthropic` or `openai-compatible` (below), and set `model` to a model available to your API account. Export the matching `OPENAI_API_KEY` or `ANTHROPIC_API_KEY`. You can instead pass `--config /path/to/config.json`. API access is billed by your provider; a ChatGPT or Claude subscription is not necessarily an API account.
 
 #### Other OpenAI-compatible endpoints
